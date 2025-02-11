@@ -1,0 +1,27 @@
+.DS_Store
+doom
+
+
+# Object files
+*.o
+*.ko
+*.obj
+*.elf
+
+
+# Shared objects
+*.dll
+*.so
+*.so.*
+*.dylib
+
+# executables
+*.exe
+*.out
+*.app
+*.i*86
+*.x86_64
+*.hex
+
+# texts
+*.txt
