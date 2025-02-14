@@ -4,8 +4,9 @@ CFLAGS = -Wall
 CFLAGS += -std=c99
 CFLAGS += -Wno-unused-parameter
 CFLAGS += -Wno-unused-function
-INCLUDES = -I.
+INCLUDES = -I./src/*.h
 CFLAGS += $(shell sdl2-config --libs --cflags)
+CFLGS += -fsanitize=address
 OS = $(shell uname -s)
 
 ifeq ($(OS),Darwin)
