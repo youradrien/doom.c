@@ -11,51 +11,53 @@ static void player_movement(game_state *g_)
 	    g_->quit = true;
 	    break;
 	case SDL_KEYDOWN:
+            if(event.key.keysym.sym >= 'a' && event.key.keysym.sym <= 'z')
+            {
+                g_->pressed_keys[event.key.keysym.sym - 'a'] = 1; 
+            }
             if(event.key.keysym.sym == SDLK_ESCAPE)
 	        g_->quit = true;
-            int d_x;
-            int d_y;
-            if(event.key.keysym.sym == SDLK_z)
-            {
-                d_x = cos(degToRad(g_->p.rotation)) * 2.0f;
-                d_y = sin(degToRad(g_->p.rotation)) * 2.0f; 
-            }
-            if(event.key.keysym.sym == SDLK_s)
-            {
-                d_x = cos(degToRad(g_->p.rotation + 180.0f )) * 2.0f;
-                d_y = sin(degToRad(g_->p.rotation + 180.0f )) * 2.0f;	         
-            }
-            if(event.key.keysym.sym == SDLK_q)
-            {
-                 d_x = cos(degToRad(g_->p.rotation + 90.0f )) * 2.0f;
-                 d_y = sin(degToRad(g_->p.rotation + 90.0f )) * 2.0f;	         
-            }
-            if(event.key.keysym.sym == SDLK_d)
-            {
-                d_x = cos(degToRad(g_->p.rotation - 90.0f )) * 2.0f;
-                d_y = sin(degToRad(g_->p.rotation - 90.0f )) * 2.0f;   
-            }       
-            if(event.key.keysym.sym == SDLK_z || event.key.keysym.sym == SDLK_s 
-                || event.key.keysym.sym == SDLK_d || event.key.keysym.sym == SDLK_q)
-            {
-                g_->p.y += d_y;
-                g_->p.x += d_x;
-            }
-            if(event.key.keysym.sym == SDLK_a)
-                g_->p.rotation ++;
-            if(event.key.keysym.sym == SDLK_e)
-                g_->p.rotation --;
+           if(event.key.keysym.sym == SDLK_m)
+	        g_->render_mode = !(g_->render_mode);
             break;
-    }
-    if(g_->p.x < 0)
-        g_->p.x = 0;
-    if(g_->p.y < 0)
-        g_->p.y = 0;
-    if(g_->p.rotation > 360.0f)
-        g_->p.rotation = 0.0f;
-    if(g_->p.rotation < 360.0f)
-        g_->p.rotation = 0.0f;
-    }
+        case SDL_KEYUP:
+            if(event.key.keysym.sym >= 'a' && event.key.keysym.sym <= 'z')
+            {
+                g_->pressed_keys[event.key.keysym.sym - 'a'] = 0; 
+            }           
+            break;
+    } 
+    for(short int i = 0; i < 26; i ++)
+    {
+        if(g_->pressed_keys[i] == 1)
+        {
+            // q z d s
+            if(i == 16 || i == 25 || i == 3 || i == 18)
+            {
+                float s = 0.0f;
+                if(i == 16) s = -90.0f;
+                if(i == 3) s = 90.0f;
+                if(i == 18) s = -180.0f;
+                float d_x = cos(degToRad((double)(g_->p.rotation  + s)));
+                float d_y = sin(degToRad((double)(g_->p.rotation  + s))); 
+                g_->p.y += 6.0f * d_y;
+                g_->p.x += 6.0f * d_x;
+            }
+            // a
+            if(i == 0)
+                g_->p.rotation += 4;
+            // e
+            if(i == 4)
+                g_->p.rotation -= 4;
+        }
+    } 
+    if(g_->p.x < 0) g_->p.x = 0;
+    if(g_->p.y < 0) g_->p.y = 0;
+    if(g_->p.x >= (float)(WINDOW_WIDTH - 6)) g_->p.x = WINDOW_WIDTH - 6.0f;
+    if(g_->p.y >= (float)(WINDOW_HEIGHT - 6)) g_->p.y = WINDOW_HEIGHT - 6.0f;
+    if(g_->p.rotation > 360.0f) g_->p.rotation = 0.0f;
+    if(g_->p.rotation < -360.0f) g_->p.rotation = 0.0f;
+}
 
 static void set_pixel_color(game_state *g_, int x, int y, int c)
 {
@@ -108,14 +110,56 @@ static void d_rect(game_state *g_, int x, int y, int width, int height)
 
     SDL_RenderFillRect(g_->renderer, &rect);
     */
-    
+    for(uint32_t i = 0; i < width; i ++ )
+    {
+        d_line(g_,
+            x + i, y,
+            x + i, y + height,
+            0xFF00FF
+        );
+    }
 }
 
 
 static void render(game_state *g_)
 {
-    // d_rect(g_, g_->p.x, g_->p.y, g_->p.x + 100, g_->p.y + 100);
-    d_line(g_, WINDOW_WIDTH / 2, 100, WINDOW_WIDTH / 2, 500, 0xFFFFFF); 
+    if(g_->render_mode)
+    {
+        float r = degToRad(g_->p.rotation);
+        float anchr = WINDOW_WIDTH / 2;
+        // transform world view to 1st-person view
+        //
+        // 1. transform vertexes relative to the player
+        float tx1 = anchr - (g_->p.x), ty1 = 100.0f - (g_->p.y);
+        float tx2 = anchr - (g_->p.x), ty2 = 500.0f - (g_->p.y);
+        // 2. rotate them around the players view
+        /*
+         * float tz1 = tx1 * cos(r) + ty1 * sin(r);
+        float tz2 = tx2 * cos(r) + ty2 * sin(r);
+        tx1 = tx1 * sin(r) - ty1 * cos(r);
+        tx2 = tx2 * sin(r) - ty2 * cos(r);
+        */
+        d_line(g_, WINDOW_WIDTH / 2 + tx1, ty1, WINDOW_WIDTH /2 + tx2, ty2, 0xFFFFFF);
+        d_line(g_, 
+            anchr + 3, 
+            WINDOW_HEIGHT / 2 + 3, 
+            anchr + 3 + (50.0f * cos(degToRad(g_->p.rotation))),
+            WINDOW_HEIGHT / 2 + 3 + (50.0f * sin(degToRad(g_->p.rotation))),
+            0xFFFFFF
+        );
+        d_rect(g_, WINDOW_WIDTH / 2, WINDOW_HEIGHT / 2, 5, 5);     }
+    else
+    {
+        // world-view
+        d_line(g_, WINDOW_WIDTH / 2, 100, WINDOW_WIDTH / 2, 500, 0xFFFFFF); 
+        // player square and line
+        d_line(g_, g_->p.x + 3, g_->p.y + 3, 
+           g_->p.x + 3 + (50.0f * cos(degToRad(g_->p.rotation))),
+           g_->p.y + 3 + (50.0f * sin(degToRad(g_->p.rotation))),
+           0xFFFFFF
+        );
+        d_rect(g_, g_->p.x, g_->p.y, 5, 5); 
+    }
 }
 
 static void multiThread_present(game_state *g_)
@@ -159,6 +203,8 @@ static void destroy_window(game_state *g_)
     SDL_Quit();
  
     free(g_->buffer);
+    // free(g_->lines);
+    free(g_);
     return;
 }
 
@@ -232,9 +278,10 @@ int init_doom(game_state **g_)
     }
     printf("Initialization successful. \n");
     (*g_)->quit = false;
-    (*g_)->p.x = 0;
-    (*g_)->p.y = 0;
+    (*g_)->p.x = WINDOW_WIDTH / 3;
+    (*g_)->p.y = WINDOW_HEIGHT / 3;
     (*g_)->p.rotation = 0;
+    (*g_)->render_mode = false;
     return 0;
 }
 
@@ -268,7 +315,7 @@ int main(int argc, char **argv)
         destroy_window(g_);
         return (EXIT_FAILURE);
     } 
-    printf("Game is runnning.. [%dx%d] %d \n", WINDOW_WIDTH, WINDOW_HEIGHT, g_->p.x);
+    printf("Game is runnning.. [%dx%d] %f \n", WINDOW_WIDTH, WINDOW_HEIGHT, g_->p.x);
     while(!(g_->quit))
     {
         player_movement(g_);

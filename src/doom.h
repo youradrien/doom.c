@@ -11,6 +11,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <inttypes.h>
 
 #define ASSERT(_e, ...) if (!(_e)) { fprintf(stderr, __VA_ARGS__); exit(1); }
 
@@ -28,27 +29,31 @@
 
 typedef	struct s_player
 {
-    int     x,y;
+    float x,y;
     float   rotation;
-    int l; // vertical lookup
-
+    int l; // vertical lookup 
 } player;
 
 
 // Structure of the whole Game State
 typedef struct s_game_state
 {
+    // SDL specifics
     SDL_Window* window;
     SDL_Renderer* renderer;
     SDL_Texture *texture;
-
     uint32_t *buffer;
 
+    int lines[100][4];
+    bool render_mode;
     bool quit;
 
     float deltaTime;
     uint32_t l_frameTime;
+
+    // player, input
     player p;
+    short int	pressed_keys[26];
 } game_state;
 
 
