@@ -38,25 +38,26 @@ static void player_movement(game_state *g_)
                 if(i == 16) s = -90.0f;
                 if(i == 3) s = 90.0f;
                 if(i == 18) s = -180.0f;
-                float d_x = cos(degToRad((double)(g_->p.rotation  + s)));
-                float d_y = sin(degToRad((double)(g_->p.rotation  + s))); 
-                g_->p.y += 6.0f * d_y;
-                g_->p.x += 6.0f * d_x;
+                float d_x = cos(DEG2RAD((double)(g_->p.rotation  + s)));
+                float d_y = sin(DEG2RAD((double)(g_->p.rotation  + s))); 
+                g_->p.pos.y += 2.0f * d_y;
+                g_->p.pos.x += 2.0f * d_x;
             }
             // a
             if(i == 0)
-                g_->p.rotation += 4;
+                g_->p.rotation -= 1;
             // e
             if(i == 4)
-                g_->p.rotation -= 4;
+                g_->p.rotation += 1;
         }
     } 
-    if(g_->p.x < 0) g_->p.x = 0;
-    if(g_->p.y < 0) g_->p.y = 0;
-    if(g_->p.x >= (float)(WINDOW_WIDTH - 6)) g_->p.x = WINDOW_WIDTH - 6.0f;
-    if(g_->p.y >= (float)(WINDOW_HEIGHT - 6)) g_->p.y = WINDOW_HEIGHT - 6.0f;
+    if(g_->p.pos.x < 0) g_->p.pos.x = 0;
+    if(g_->p.pos.y < 0) g_->p.pos.y = 0;
+    if(g_->p.pos.x >= (float)(WINDOW_WIDTH - 6)) g_->p.pos.x = WINDOW_WIDTH - 6.0f;
+    if(g_->p.pos.y >= (float)(WINDOW_HEIGHT - 6)) g_->p.pos.y = WINDOW_HEIGHT - 6.0f;
     if(g_->p.rotation > 360.0f) g_->p.rotation = 0.0f;
     if(g_->p.rotation < -360.0f) g_->p.rotation = 0.0f;
+    //printf("p->rot: %f° \n", g_->p.rotation);
 }
 
 static void set_pixel_color(game_state *g_, int x, int y, int c)
@@ -121,45 +122,173 @@ static void d_rect(game_state *g_, int x, int y, int width, int height)
 }
 
 
+// rotate vector v by angle a (in radians)
+static inline v2 rotate_v2(v2 v, f32 a)
+{
+    return (v2){
+        (v.x * cos(a)) - (v.y * sin(a)),
+        (v.x * sin(a)) + (v.y * cos(a))
+    };
+}
+
+// intersection of two segments
+// https://en.wikipedia.org/wiki/Line-line_intersection
+static inline v2 intersect_segments(v2 a0, v2 a1, v2 b0, v2 b1)
+{
+    const f32 d =
+        ((a0.x - a1.x) * (b0.y - b1.y))
+            - ((a0.y - a1.y) * (b0.x - b1.x));
+
+    if(fabsf(d) < 0.000001f) 
+        return (v2) {NAN, NAN};
+
+    const f32 
+        t = ((a0.x - b0.x) * (b0.y - b1.y))
+            - ((a0.y - b0.y) * (b0.x - b1.x)) / d,
+        u = ((a0.x - b0.x) * (a0.y - a1.y))
+            - ((a0.y - b0.y) * (a0.x - a1.x)) / d;
+
+    return (t >= 0 && t <= 1 && u >= 0 && u <= 1) ? 
+        (v2){
+            a0.x + (t * (a1.x - a0.x)),
+            a0.y + (t * (a1.y - a0.y))
+        } : (v2) {NAN, NAN};
+}
+
+// convert angle to [-(FOV/2)...+(FOV/2)] => [x in 0..WINDOW_WIDTH] 
+static inline int screen_angle_to_x(f32 a)
+{
+    const f32 a_pi4 = (
+            ((a + HFOV / 2.0f)
+                / 
+                HFOV
+            ) * PI_2)
+            + (PI_2 / 2.0f);
+    return (int) ((WINDOW_WIDTH / 2) * (1.0f - tan(a_pi4)));
+}
+
+// 2D COORDINATES (world space)
+// -> 3D COORDAINTES (camera space)
+static inline v2 world_to_camera(game_state *g_, v2 p)
+{
+    // 1. translate
+    const v2 t = (v2){
+        p.x - g_->p.pos.x, 
+        p.y - g_->p.pos.y
+    };
+    // 2. rotate
+    return (v2)
+        {
+            t.x * (sin(DEG2RAD(g_->p.rotation))) - t.y * (cos(DEG2RAD(g_->p.rotation))),
+            t.x * (cos(DEG2RAD(g_->p.rotation))) + t.y * (sin(DEG2RAD(g_->p.rotation)))
+        };
+}
+
+// (radian)
+static inline float normalize_angle(double angle)
+{
+    return fmod((angle + M_PI), 2 * M_PI) - M_PI;
+}
+
+// 2D Coordinates to 3D
+// 3. Wall-Cliping (test if lines intersects with player viewcone/viewport by using vector2 cross product)
+// 4. Perspective transformation  (scaling lines according to their dst from player, for appearance of perspective (far-away objects are smaller).
+// 5. [COMING SOON ? ] Z-buffering (track depth of pixel to avoid rendering useless surfaces)
 static void render(game_state *g_)
 {
+    // transform world view to 1st-person view   
     if(g_->render_mode)
     {
-        float r = degToRad(g_->p.rotation);
-        float anchr = WINDOW_WIDTH / 2;
-        // transform world view to 1st-person view
-        //
-        // 1. transform vertexes relative to the player
-        float tx1 = anchr - (g_->p.x), ty1 = 100.0f - (g_->p.y);
-        float tx2 = anchr - (g_->p.x), ty2 = 500.0f - (g_->p.y);
-        // 2. rotate them around the players view
-        /*
-         * float tz1 = tx1 * cos(r) + ty1 * sin(r);
-        float tz2 = tx2 * cos(r) + ty2 * sin(r);
-        tx1 = tx1 * sin(r) - ty1 * cos(r);
-        tx2 = tx2 * sin(r) - ty2 * cos(r);
-        */
-        d_line(g_, WINDOW_WIDTH / 2 + tx1, ty1, WINDOW_WIDTH /2 + tx2, ty2, 0xFFFFFF);
-        d_line(g_, 
-            anchr + 3, 
-            WINDOW_HEIGHT / 2 + 3, 
-            anchr + 3 + (50.0f * cos(degToRad(g_->p.rotation))),
-            WINDOW_HEIGHT / 2 + 3 + (50.0f * sin(degToRad(g_->p.rotation))),
-            0xFFFFFF
-        );
-        d_rect(g_, WINDOW_WIDTH / 2, WINDOW_HEIGHT / 2, 5, 5);     }
+        for(uint32_t i = 0; i < g_->scene._walls_ix; i ++)
+        {     
+            const wall *l = &(g_->scene._walls[i]);
+            float r = DEG2RAD(g_->p.rotation);
+            const v2
+                zdl = rotate_v2((v2){ 0.0f, 1.0f}, + (HFOV / 2.0f)),
+                zdr = rotate_v2((v2){ 0.0f, 1.0f}, - (HFOV / 2.0f)),
+                znl = (v2){ zdl.x * ZNEAR, zdl.y * ZNEAR },
+                znr = (v2){ zdr.x * ZNEAR, zdr.y * ZNEAR },
+                zfl = (v2){0.0f, 1.0f},
+                zfr = rotate_v2((v2){ 0.0f, 1.0f}, + (HFOV / 2.0f));
+
+            // line relative to player
+            const v2 
+                op0 = (v2)(world_to_camera(g_, l->a)),
+                op1 = (v2)(world_to_camera(g_, l->b));
+            
+            // compute cliped positions
+            v2 cp0 = op0, cp1 = op1;
+
+            // both are behind player -> wall behind camera
+            if(cp0.y <= 0 && cp0.x <= 0){
+                continue;
+            }
+
+            // angle-clip against view frustum
+            f32 
+                ac0 = normalize_angle(atan2(cp0.y, cp0.x) - PI_2),
+                ac1 = normalize_angle(atan2(cp1.y, cp0.x) - PI_2);
+
+            // clip against frustum (if wall intersects with clip planes)
+            if(cp0.y < ZNEAR
+                || cp1.y < ZNEAR
+                || ac0 > +(HFOV / 2)
+                || ac0 > -(HFOV / 2)
+            ){
+                // do smth
+
+            }
+            // d_line(g_, a_.x, a_.y, b_.x, b_.y, 0xFF00FF);
+        }
+    }
     else
     {
         // world-view
-        d_line(g_, WINDOW_WIDTH / 2, 100, WINDOW_WIDTH / 2, 500, 0xFFFFFF); 
-        // player square and line
-        d_line(g_, g_->p.x + 3, g_->p.y + 3, 
-           g_->p.x + 3 + (50.0f * cos(degToRad(g_->p.rotation))),
-           g_->p.y + 3 + (50.0f * sin(degToRad(g_->p.rotation))),
-           0xFFFFFF
-        );
-        d_rect(g_, g_->p.x, g_->p.y, 5, 5); 
+        // lines
+        for(uint32_t i = 0; i < g_->scene._walls_ix; i ++)
+        {
+            d_line(g_, 
+                g_->scene._walls[i].a.x, g_->scene._walls[i].a.y, 
+                g_->scene._walls[i].b.x, g_->scene._walls[i].b.y,
+                0xFFFFFF
+            ); 
+        }
+        // player square and line 
+        for(uint32_t i = 0; i < FOV; i ++)
+        {
+            d_line(g_, g_->p.pos.x + 3, g_->p.pos.y + 3, 
+               g_->p.pos.x + 3 + (200.0f * cos(DEG2RAD((float)(g_->p.rotation - (FOV / 2) + i)))),
+               g_->p.pos.y + 3 + (200.0f * sin(DEG2RAD((float)(g_->p.rotation - (FOV / 2) + i)))),
+               0xFFFFFF
+            );        
+        }
+        d_line(g_, g_->p.pos.x + 3, g_->p.pos.y + 3, 
+           g_->p.pos.x + 3 + (50.0f * cos(DEG2RAD(g_->p.rotation))),
+           g_->p.pos.y + 3 + (50.0f * sin(DEG2RAD(g_->p.rotation))),
+           0xFFFF00
+        );        
+        d_rect(g_, g_->p.pos.x, g_->p.pos.y, 5, 5); 
     }
+}
+
+static void scene(game_state *g_)
+{ 
+    g_->scene._walls = (wall *) malloc(100 * sizeof(wall));
+    if (!g_->scene._walls)
+    {
+
+    }
+    wall *l = &(g_->scene._walls[0]);
+
+    l->a.x = WINDOW_WIDTH / 2;  l->b.x = WINDOW_WIDTH/2;
+    l->a.y = 100;               l->b.y = 300;
+    l->color = 0xFF00FF;
+
+    l = &(g_->scene._walls[1]);
+    l->a.x = WINDOW_WIDTH / 2; l->b.x = WINDOW_WIDTH/2 + 300;
+    l->a.y = 100;              l->b.y = 100;
+    l->color = 0xFFFF00;    
+    g_->scene._walls_ix = 2;
 }
 
 static void multiThread_present(game_state *g_)
@@ -278,8 +407,8 @@ int init_doom(game_state **g_)
     }
     printf("Initialization successful. \n");
     (*g_)->quit = false;
-    (*g_)->p.x = WINDOW_WIDTH / 3;
-    (*g_)->p.y = WINDOW_HEIGHT / 3;
+    (*g_)->p.pos.x = WINDOW_WIDTH / 3;
+    (*g_)->p.pos.y = WINDOW_HEIGHT / 3;
     (*g_)->p.rotation = 0;
     (*g_)->render_mode = false;
     return 0;
@@ -314,8 +443,9 @@ int main(int argc, char **argv)
     {
         destroy_window(g_);
         return (EXIT_FAILURE);
-    } 
-    printf("Game is runnning.. [%dx%d] %f \n", WINDOW_WIDTH, WINDOW_HEIGHT, g_->p.x);
+    }
+    scene(g_);
+    printf("Game is runnning.. [%dx%d]\n", WINDOW_WIDTH, WINDOW_HEIGHT);
     while(!(g_->quit))
     {
         player_movement(g_);

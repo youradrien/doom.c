@@ -15,24 +15,54 @@
 
 #define ASSERT(_e, ...) if (!(_e)) { fprintf(stderr, __VA_ARGS__); exit(1); }
 
-#define FPS 60
-#define POV 120
-#define FRAME_TARGET_TIME (1000/FPS)
-#define WINDOW_WIDTH 800
-#define WINDOW_HEIGHT 600
-#define BLACK 0
-
 // #define M_PI       3.14159265358979323846
-#define degToRad(angleDegrees) (angleDegrees * M_PI / 180.0)
-#define radToDeg(angleRadians) (angleRadians * 180.0 / M_PI)
+#define DEG2RAD(a) (a * M_PI / 180.0)
+#define radToDeg(a) (a * 180.0 / M_PI)
+#define PI_2 (M_PI / 2.0f)
 
+#define EYE_Z 1.65f
+#define FOV 90
+#define HFOV DEG2RAD(FOV)
+#define VFOV 0.5f
+
+#define ZNEAR 0.0001f
+#define ZFAR  128.0f
+
+#define FPS 60
+#define FRAME_TARGET_TIME (1000/FPS)
+#define WINDOW_WIDTH 1000
+#define WINDOW_HEIGHT 500
+#define BLACK 0
+#define C_X WINDOW_WIDTH/2
+#define C_Y WINDOW_HEIGHT/2
+#define normalize(_vn) ({ __typeof__(_vn) __vn = (_vn); const f32 l = length(__vn); (__typeof__(_vn)) { __vn.x / l, __vn.y / l }; })
+
+typedef float f32;
+
+typedef struct v2_s
+{
+    f32 x;
+    f32 y;
+} v2;
 
 typedef	struct s_player
-{
-    float x,y;
+{ 
+    v2	pos;
     float   rotation;
-    int l; // vertical lookup 
 } player;
+
+typedef struct s_wall
+{ 
+    v2	a;
+    v2	b;
+    uint32_t color;
+} wall;
+
+typedef struct s_scene
+{
+    wall *_walls;
+    int	 _walls_ix;
+}   t_scene;
 
 
 // Structure of the whole Game State
@@ -44,9 +74,9 @@ typedef struct s_game_state
     SDL_Texture *texture;
     uint32_t *buffer;
 
-    int lines[100][4];
     bool render_mode;
     bool quit;
+    t_scene scene;
 
     float deltaTime;
     uint32_t l_frameTime;
