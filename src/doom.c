@@ -156,7 +156,7 @@ static inline v2 intersect_segments(v2 a0, v2 a1, v2 b0, v2 b1)
 }
 
 // convert angle to [-(FOV/2)...+(FOV/2)] => [x in 0..WINDOW_WIDTH] 
-static inline int screen_angle_to_x(f32 a)
+/* static inline int screen_angle_to_x(f32 a)
 {
     const f32 a_pi4 = (
             ((a + HFOV / 2.0f)
@@ -165,6 +165,12 @@ static inline int screen_angle_to_x(f32 a)
             ) * PI_2)
             + (PI_2 / 2.0f);
     return (int) ((WINDOW_WIDTH / 2) * (1.0f - tan(a_pi4)));
+}*/
+static inline int screen_angle_to_x(f32 angle) {
+    return
+        ((int) (WINDOW_WIDTH / 2))
+            * (1.0f 
+            - tan(( ((angle + (HFOV / 2.0)) / HFOV) * PI_2) - PI_4));
 }
 
 // 2D COORDINATES (world space)
@@ -185,10 +191,18 @@ static inline v2 world_to_camera(game_state *g_, v2 p)
 }
 
 // (radian)
+/*
 static inline float normalize_angle(double angle)
 {
     return fmod((angle + M_PI), 2 * M_PI) - M_PI;
 }
+*/
+// noramlize angle to +/-PI
+static inline f32 normalize_angle(f32 a)
+{
+    return a - (TAU * floor((a + M_PI) / TAU));
+}
+
 
 // 2D Coordinates to 3D
 // 3. Wall-Cliping (test if lines intersects with player viewcone/viewport by using vector2 cross product)
@@ -202,16 +216,17 @@ static void render(game_state *g_)
         for(uint32_t i = 0; i < g_->scene._walls_ix; i ++)
         {     
             const wall *l = &(g_->scene._walls[i]);
-            float r = DEG2RAD(g_->p.rotation);
+            // float r = DEG2RAD(g_->p.rotation);
+            //
             const v2
                 zdl = rotate_v2((v2){ 0.0f, 1.0f}, + (HFOV / 2.0f)),
                 zdr = rotate_v2((v2){ 0.0f, 1.0f}, - (HFOV / 2.0f)),
-                znl = (v2){ zdl.x * ZNEAR, zdl.y * ZNEAR },
-                znr = (v2){ zdr.x * ZNEAR, zdr.y * ZNEAR },
-                zfl = (v2){0.0f, 1.0f},
-                zfr = rotate_v2((v2){ 0.0f, 1.0f}, + (HFOV / 2.0f));
+                znl = (v2){ zdl.x * ZNEAR, zdl.y * ZNEAR }, // z-near left
+                znr = (v2){ zdr.x * ZNEAR, zdr.y * ZNEAR }, // z-near right
+                zfl = (v2){ zdl.x * ZFAR, zdl.y * ZFAR }, // z-far left
+                zfr = (v2){ zdr.x * ZFAR, zdr.y * ZFAR }; // z-far right
 
-            // line relative to player
+            // line-pos converted from [world-space] to [camera-space]
             const v2 
                 op0 = (v2)(world_to_camera(g_, l->a)),
                 op1 = (v2)(world_to_camera(g_, l->b));
@@ -225,41 +240,116 @@ static void render(game_state *g_)
             }
 
             // angle-clip against view frustum
-            f32 
-                ac0 = normalize_angle(atan2(cp0.y, cp0.x) - PI_2),
-                ac1 = normalize_angle(atan2(cp1.y, cp0.x) - PI_2);
+            f32
+                ac0 = normalize_angle((double)(- (atan2(cp0.y, cp0.x)  - PI_2))),
+                ac1 = normalize_angle  ((double)(- (atan2(cp1.y, cp1.x) - PI_2)));
+
+            // printf("ANGLES:  [%f, %f]  HFOV/2 = %f   cos(atan2)[%f, %f]\n", (ac0), (ac1), HFOV / 2, sin(ac0), sin(ac1));
 
             // clip against frustum (if wall intersects with clip planes)
             if(cp0.y < ZNEAR
                 || cp1.y < ZNEAR
                 || ac0 > +(HFOV / 2)
-                || ac0 > -(HFOV / 2)
+                || ac1 < -(HFOV / 2)
             ){
-                // do smth
+                // know where the intersection is on the (-HFOV/2 or HFOV/2) line delimiting player's fov
+                const v2 
+                    left = intersect_segments(cp0, cp1, znl, zfl),
+                    right = intersect_segments(cp0, cp1, znr, zfr);
 
+                printf("FRUSTUM case? : %s\n", ac0 > +(HFOV / 2) ? "A(left)" : "B(right)"); 
+                printf("FRUSTUM CLIP: v2[%f, %f][%f, %f] \n", left.x, left.y, right.x, right.y);
+                // recompute angles ac0, ac1
+                if(!isnan(left.x)){
+                    cp0 = left;
+                    ac0 = normalize_angle(atan2(cp0.y, cp0.x) - PI_2);
+                }
+
+                if(!isnan(right.x)){
+                    cp1 = right;
+                    ac0 = normalize_angle(atan2(cp1.y, cp1.x) - PI_2);    
+                }
+            }else
+            {
+                printf("ANGLES:  [%f, %f]  HFOV/2 = %f   cos(atan2)[%f, %f]\n", (ac0), (ac1), HFOV / 2, sin(ac0), sin(ac1));
             }
-            // d_line(g_, a_.x, a_.y, b_.x, b_.y, 0xFF00FF);
+
+            // wrong side of the wall
+            if(ac0 < ac1){
+                // printf("WRONG SIDE WALL \n");
+                //continue;
+            }
+
+            // wall attributes
+            // todo: parse wad to get real values of wall floor and ceiling heights
+            float z_floor = 4.0f;
+            float z_ceiling = 0.0f;
+
+            // ignore far -HFOV/2..+HFOV/2
+            // check if angles are entirely far of bounds
+            if((ac0 < -(HFOV / 2) && ac1 < -(HFOV / 2))
+                || (ac0 > +(HFOV / 2) && ac1 > +(HFOV/ 2))
+            ){
+                continue;
+            }
+            // wall y-scale
+            const f32 
+                sy0 = ifnan((float)(VFOV * WINDOW_HEIGHT) / cp0.y, 1e10);
+            const f32
+                sy1 = ifnan((float)(VFOV * WINDOW_HEIGHT) / cp1.y, 1e10);
+
+            // wall x's
+            const int
+                    wx0 = screen_angle_to_x(ac0),
+                    wx1 = screen_angle_to_x(ac1);
+            // wall y's
+            const int 
+                   wy_b0 = (WINDOW_HEIGHT / 2) + (int) (z_floor * sy0),
+                   wy_b1 = (WINDOW_HEIGHT / 2) + (int) (z_floor * sy1),
+                   wy_t0 = (WINDOW_HEIGHT / 2) + (int) (z_ceiling * sy0),
+                   wy_t1 = (WINDOW_HEIGHT / 2) + (int) (z_ceiling * sy1);
+
+            /*
+            printf(
+                    "WALL at x[a:%d b:%d]   (y-scale: [%f, %f])  (top-bottom: [%f, %f])\n", 
+                   wx0, wx1, sy0, sy1, cp0.y, cp1.y
+            );
+            */
+            // wall-outines
+            // bottom-top-left-right
+            d_line(g_, wx0, wy_b0, wx1, wy_b1, 0xFF00FF);
+            d_line(g_, wx0, wy_t1, wx1, wy_t1, 0xFF00FF);
+            d_line(g_, wx0, wy_b0, wx0, wy_t0, 0xFF00FF);
+            d_line(g_, wx1, wy_b1, wx1, wy_t1, 0xFF00FF);
+            // wall-filled
+            //
+            // todo:
+            // texture-mapping
         }
     }
     else
     {
         // world-view
-        // lines
+        // walls
         for(uint32_t i = 0; i < g_->scene._walls_ix; i ++)
         {
             d_line(g_, 
                 g_->scene._walls[i].a.x, g_->scene._walls[i].a.y, 
                 g_->scene._walls[i].b.x, g_->scene._walls[i].b.y,
                 0xFFFFFF
-            ); 
+            );
+            // a
+            d_rect(g_, g_->scene._walls[i].a.x - 2,  g_->scene._walls[i].a.y - 2, 4, 4); 
+            // b
+            d_rect(g_, g_->scene._walls[i].b.x - 2,  g_->scene._walls[i].b.y - 2, 4, 4); 
         }
         // player square and line 
         for(uint32_t i = 0; i < FOV; i ++)
         {
             d_line(g_, g_->p.pos.x + 3, g_->p.pos.y + 3, 
-               g_->p.pos.x + 3 + (200.0f * cos(DEG2RAD((float)(g_->p.rotation - (FOV / 2) + i)))),
-               g_->p.pos.y + 3 + (200.0f * sin(DEG2RAD((float)(g_->p.rotation - (FOV / 2) + i)))),
-               0xFFFFFF
+               g_->p.pos.x + 3 + (200.0f * cos(DEG2RAD((float)((g_->p.rotation - (FOV / 2)) + i)))),
+               g_->p.pos.y + 3 + (200.0f * sin(DEG2RAD((float)((g_->p.rotation - (FOV/2)) + i)))),
+               0xAAAAAA
             );        
         }
         d_line(g_, g_->p.pos.x + 3, g_->p.pos.y + 3, 
@@ -284,11 +374,13 @@ static void scene(game_state *g_)
     l->a.y = 100;               l->b.y = 300;
     l->color = 0xFF00FF;
 
+    /*
     l = &(g_->scene._walls[1]);
     l->a.x = WINDOW_WIDTH / 2; l->b.x = WINDOW_WIDTH/2 + 300;
     l->a.y = 100;              l->b.y = 100;
-    l->color = 0xFFFF00;    
-    g_->scene._walls_ix = 2;
+    l->color = 0xFFFF00;
+    */ 
+    g_->scene._walls_ix = 1;
 }
 
 static void multiThread_present(game_state *g_)

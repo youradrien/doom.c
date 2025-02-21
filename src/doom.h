@@ -19,10 +19,16 @@
 #define DEG2RAD(a) (a * M_PI / 180.0)
 #define radToDeg(a) (a * 180.0 / M_PI)
 #define PI_2 (M_PI / 2.0f)
+#define PI_4 (M_PI / 4.0f)
+#define TAU (2.0f * M_PI)
 
+// eye-height of the player
+// (he'll be able to crouch)
 #define EYE_Z 1.65f
 #define FOV 90
+// horizontal fov
 #define HFOV DEG2RAD(FOV)
+// vertical fov
 #define VFOV 0.5f
 
 #define ZNEAR 0.0001f
@@ -36,6 +42,8 @@
 #define C_X WINDOW_WIDTH/2
 #define C_Y WINDOW_HEIGHT/2
 #define normalize(_vn) ({ __typeof__(_vn) __vn = (_vn); const f32 l = length(__vn); (__typeof__(_vn)) { __vn.x / l, __vn.y / l }; })
+#define ifnan(_x, _alt) ({ __typeof__(_x) __x = (_x); isnan(__x) ? (_alt) : __x; })
+
 
 typedef float f32;
 
