@@ -21,6 +21,7 @@
 #define PI_2 (M_PI / 2.0f)
 #define PI_4 (M_PI / 4.0f)
 #define TAU (2.0f * M_PI)
+#define EPSILON 1e-2  // Small tolerance to check proximity
 
 // eye-height of the player
 // (he'll be able to crouch)
@@ -36,8 +37,8 @@
 
 #define FPS 60
 #define FRAME_TARGET_TIME (1000/FPS)
-#define WINDOW_WIDTH 1000
-#define WINDOW_HEIGHT 500
+#define WINDOW_WIDTH 800
+#define WINDOW_HEIGHT 600
 #define BLACK 0
 #define C_X WINDOW_WIDTH/2
 #define C_Y WINDOW_HEIGHT/2
