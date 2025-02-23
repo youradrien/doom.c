@@ -190,12 +190,12 @@ static inline int screen_angle_to_x(game_state *g_, f32 angle)
         angle += (angle < 0 ? (+EPSILON) : (-EPSILON));
     }
     return 
-        screenclamp(
+        // screenclamp(
             ((int) (WINDOW_WIDTH / 2))
                 * (1.0f - tan(
                     ((angle + (HFOV / 2.0)) / HFOV) 
-                        * PI_2 - PI_4))
-        );
+                        * PI_2 - PI_4));
+        // );
 }
 
 // 2D COORDINATES (world space)
@@ -253,23 +253,26 @@ static void render(game_state *g_)
             v2 cp0 = op0, cp1 = op1;
 
             // both are behind player -> wall behind camera
-            if(cp0.y <= 0 && cp0.x <= 0){
+            if(cp0.y <= 0 && cp1.y <= 0){
+                printf("BRRR \n");
                 continue;
             }
 
             // angle-clip against view frustum
             f32
                 ac0 = normalize_angle((double)(- (atan2(cp0.y, cp0.x)  - PI_2))),
-                ac1 = normalize_angle  ((double)(- (atan2(cp1.y, cp1.x) - PI_2)));
- 
+                ac1 = normalize_angle((double)(- (atan2(cp1.y, cp1.x) - PI_2)));
+
+            printf("[A: %d°]\t[B: %d] \n", (int)(radToDeg(ac0)), (int)(radToDeg(ac1)));
+            bool slim_thick = false;
             // clip against frustum (if wall intersects with clip planes)
-            if( 
+            if(  
                 (cp0.y < ZNEAR)
                 || (cp1.y < ZNEAR)
                 || (ac0 > +(HFOV / 2)) // 1
                 // || (ac0 < -(HFOV / 2)) // 2
                 || (ac1 < -(HFOV / 2)) // 1
-                // || (ac1 > +(HFOV / 2)) // 2
+               // || (ac1 > +(HFOV / 2)) // 2
             ){
                 // todo: make case-2 work
                 //
@@ -277,24 +280,13 @@ static void render(game_state *g_)
                 v2 
                     left = intersect_segments(cp0, cp1, znl, zfl),
                     right = intersect_segments(cp0, cp1, znr, zfr);
-                 
-                if((
-                    !(ac0 > +(HFOV / 2) || ac1 < -(HFOV / 2))
-                ) && (
-                    ac0 < -(HFOV / 2) || ac1 > +(HFOV / 2) 
-                )
-                ){
-                    // printf("fatnouck velly \n"); 
-                    left = (right);
-                    right = intersect_segments(cp0, cp1, znl, zfl);
-                }
+
 
                 // recompute angles ac0, ac1
                 if(!isnan(left.x)){
                     cp0 = left;
                     ac0 = normalize_angle((double)(- (atan2(cp0.y, cp0.x) - PI_2)));
                 }
-
                 if(!isnan(right.x)){
                     cp1 = right;
                     ac1 = normalize_angle((double) (- (atan2(cp1.y, cp1.x) - PI_2)));    
@@ -302,14 +294,15 @@ static void render(game_state *g_)
             }
             
             // wrong side of the wall
-            /*if(ac1 < ac0){
-                printf("WRONG SIDE WALL \n");
+            if(ac0 < ac1)
+            {
+                printf("lowkey catchted here tho mb \n");
                 continue;
-            }¨*/
+            }
 
             // wall attributes
             // todo: parse wad to get real values of wall floor and ceiling heights
-            float z_floor = 6.0f;
+            float z_floor = 12.0f;
             float z_ceiling = 0.0f;
 
             // ignore far -HFOV/2..+HFOV/2
@@ -317,7 +310,6 @@ static void render(game_state *g_)
             if( (ac0 < -(HFOV / 2) && ac1 < -(HFOV / 2))
                 || (ac0 > +(HFOV / 2) && ac1 > +(HFOV/ 2))
             ){
-                // printf("ignored. [%d %d]\n", (int)(radToDeg(ac0)),(int)(radToDeg(ac1)) );
                 continue;
             }
             // wall y-scale
@@ -328,8 +320,12 @@ static void render(game_state *g_)
 
             // wall x's
             const int
-                    wx0 = screen_angle_to_x(g_, ac0),
-                    wx1 = screen_angle_to_x(g_, ac1);
+                    wx0 = screenclamp(
+                            screen_angle_to_x(g_, ac0)
+                        ),
+                    wx1 = screenclamp(
+                            screen_angle_to_x(g_, ac1)
+                        );
             // wall y's
             const int 
                    wy_b0 = (WINDOW_HEIGHT / 2) + (int) (z_floor * sy0),
@@ -337,7 +333,7 @@ static void render(game_state *g_)
                    wy_t0 = (WINDOW_HEIGHT / 2) + (int) (z_ceiling * sy0),
                    wy_t1 = (WINDOW_HEIGHT / 2) + (int) (z_ceiling * sy1);
 
-            
+            /*
             printf(
                     "\033[1m------------- WALL[%d]: ---------------\033[0m\
                     \n\033[32m x-degrees:\t A[x=%d °=%d] B[x=%d °=%d]   \033[0m \
@@ -346,8 +342,7 @@ static void render(game_state *g_)
                     i,
                     wx0, (int)(radToDeg(ac0)), wx1, (int)(radToDeg(ac1)), sy0, sy1, (int)cp0.y, (int)cp1.y
             );
-            
-            
+            */
             
             // wall-outines
             // bottom-top-left-right
@@ -364,21 +359,8 @@ static void render(game_state *g_)
     }
     else
     {
-        // world-view
-        // walls
-        for(uint32_t i = 0; i < g_->scene._walls_ix; i ++)
-        {
-            d_line(g_, 
-                g_->scene._walls[i].a.x, g_->scene._walls[i].a.y, 
-                g_->scene._walls[i].b.x, g_->scene._walls[i].b.y,
-                0xFFFFFF
-            );
-            // a
-            d_rect(g_, g_->scene._walls[i].a.x - 2,  g_->scene._walls[i].a.y - 2, 4, 4); 
-            // b
-            d_rect(g_, g_->scene._walls[i].b.x - 2,  g_->scene._walls[i].b.y - 2, 4, 4); 
-        }
-        // player square and line 
+
+      // player square and line 
         for(uint32_t i = 0; i < FOV; i ++)
         {
             d_line(g_, g_->p.pos.x + 3, g_->p.pos.y + 3, 
@@ -393,6 +375,21 @@ static void render(game_state *g_)
            0xFFFF00
         );        
         d_rect(g_, g_->p.pos.x, g_->p.pos.y, 5, 5); 
+        // world-view
+        // walls
+        for(uint32_t i = 0; i < g_->scene._walls_ix; i ++)
+        {
+            d_line(g_, 
+                g_->scene._walls[i].a.x, g_->scene._walls[i].a.y, 
+                g_->scene._walls[i].b.x, g_->scene._walls[i].b.y,
+                0xFFFFFF
+            );
+            // a
+            d_rect(g_, g_->scene._walls[i].a.x - 2,  g_->scene._walls[i].a.y - 2, 4, 4); 
+            // b
+            d_rect(g_, g_->scene._walls[i].b.x - 2,  g_->scene._walls[i].b.y - 2, 4, 4); 
+        }
+
     }
 }
 
