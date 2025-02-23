@@ -44,7 +44,7 @@
 #define C_Y WINDOW_HEIGHT/2
 #define normalize(_vn) ({ __typeof__(_vn) __vn = (_vn); const f32 l = length(__vn); (__typeof__(_vn)) { __vn.x / l, __vn.y / l }; })
 #define ifnan(_x, _alt) ({ __typeof__(_x) __x = (_x); isnan(__x) ? (_alt) : __x; })
-
+#define screenclamp(_a)	((_a > WINDOW_WIDTH) ? (WINDOW_WIDTH - 1) : (_a))
 
 typedef float f32;
 

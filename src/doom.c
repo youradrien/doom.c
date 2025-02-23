@@ -100,6 +100,15 @@ static void d_line(game_state *g_, int x0, int y0, int x1, int y1, uint32_t colo
     }
 }
 
+static void vert_line(game_state *g_, int x, int y0, int y1, uint32_t color)
+{
+    for(uint32_t i = y0; i < y1; i++)
+    {
+        const int ix = (WINDOW_WIDTH * i) + x;
+        g_->buffer[ix] = (color);
+    }
+}
+
 static void d_rect(game_state *g_, int x, int y, int width, int height)
 {
     if((x < 0) || (y < 0) ||(x + width) > WINDOW_WIDTH || (y + height) > WINDOW_HEIGHT)
@@ -140,15 +149,18 @@ static inline v2 intersect_segments(v2 a0, v2 a1, v2 b0, v2 b1)
         ((a0.x - a1.x) * (b0.y - b1.y))
             - ((a0.y - a1.y) * (b0.x - b1.x));
 
-    if(fabsf(d) < 0.00001f) 
+
+    // When two lines are parallel or coincident, denominator is zero.
+    if(fabsf(d) < 0.00001f){ 
         return (v2) {NAN, NAN};
+    }
 
     const f32 
-        t = ((a0.x - b0.x) * (b0.y - b1.y))
-            - ((a0.y - b0.y) * (b0.x - b1.x)) / d,
-        u = ((a0.x - b0.x) * (a0.y - a1.y))
-            - ((a0.y - b0.y) * (a0.x - a1.x)) / d;
-
+        t = ( (a0.x - b0.x) * (b0.y - b1.y)
+               - (a0.y - b0.y) * (b0.x - b1.x) )/ d,
+        u = ( (a0.x - b0.x) * (a0.y - a1.y)
+             - (a0.y - b0.y) * (a0.x - a1.x) ) / d;
+    // printf("recomputation:  t = %f u = %f \n", t, u);    
     return (t >= 0 && t <= 1 && u >= 0 && u <= 1) ? 
         (v2){
             a0.x + (t * (a1.x - a0.x)),
@@ -171,17 +183,19 @@ static inline int screen_angle_to_x(game_state *g_, f32 angle)
     // catch asymptote correctly
     // (with epsilon) 
     if(
-        (fabs(angle) <= (1.571) + 0.1f)
-        && (fabs(angle) >= (1.571) - 0.1f)
+        (fabs(angle) <= (1.571) + 0.02f)
+        && (fabs(angle) >= (1.571) - 0.02f)
     ){
         // then clamp it by epsilon
         angle += (angle < 0 ? (+EPSILON) : (-EPSILON));
     }
     return 
-        ((int) (WINDOW_WIDTH / 2))
-            * (1.0f - tan(
-                ((angle + (HFOV / 2.0)) / HFOV) 
-                    * PI_2 - PI_4));
+        screenclamp(
+            ((int) (WINDOW_WIDTH / 2))
+                * (1.0f - tan(
+                    ((angle + (HFOV / 2.0)) / HFOV) 
+                        * PI_2 - PI_4))
+        );
 }
 
 // 2D COORDINATES (world space)
@@ -223,8 +237,8 @@ static void render(game_state *g_)
             const wall *l = &(g_->scene._walls[i]);
 
             const v2
-                zdl = rotate_v2((v2){ 0.0f, 1.0f}, + (HFOV / 2.0f)),
-                zdr = rotate_v2((v2){ 0.0f, 1.0f}, - (HFOV / 2.0f)),
+                zdr = rotate_v2((v2){ 0.0f, 1.0f}, + (HFOV / 2.0f)),
+                zdl = rotate_v2((v2){ 0.0f, 1.0f}, - (HFOV / 2.0f)),
                 znl = (v2){ zdl.x * ZNEAR, zdl.y * ZNEAR }, // z-near left
                 znr = (v2){ zdr.x * ZNEAR, zdr.y * ZNEAR }, // z-near right
                 zfl = (v2){ zdl.x * ZFAR, zdl.y * ZFAR }, // z-far left
@@ -249,38 +263,49 @@ static void render(game_state *g_)
                 ac1 = normalize_angle  ((double)(- (atan2(cp1.y, cp1.x) - PI_2)));
  
             // clip against frustum (if wall intersects with clip planes)
-            if( (cp0.y < ZNEAR)
+            if( 
+                (cp0.y < ZNEAR)
                 || (cp1.y < ZNEAR)
-                || (ac0 > +(HFOV / 2)) 
-                || (ac0 < -(HFOV / 2))
-                || (ac1 < -(HFOV / 2)) 
-                || (ac1 > +(HFOV / 2))
+                || (ac0 > +(HFOV / 2)) // 1
+                // || (ac0 < -(HFOV / 2)) // 2
+                || (ac1 < -(HFOV / 2)) // 1
+                // || (ac1 > +(HFOV / 2)) // 2
             ){
+                // todo: make case-2 work
+                //
                 // know where the intersection is on the (-HFOV/2 or HFOV/2) line delimiting player's fov
-                const v2 
+                v2 
                     left = intersect_segments(cp0, cp1, znl, zfl),
                     right = intersect_segments(cp0, cp1, znr, zfr);
-                printf("recomputation of smth \n");
+                 
+                if((
+                    !(ac0 > +(HFOV / 2) || ac1 < -(HFOV / 2))
+                ) && (
+                    ac0 < -(HFOV / 2) || ac1 > +(HFOV / 2) 
+                )
+                ){
+                    // printf("fatnouck velly \n"); 
+                    left = (right);
+                    right = intersect_segments(cp0, cp1, znl, zfl);
+                }
+
                 // recompute angles ac0, ac1
                 if(!isnan(left.x)){
-                    printf("recomputation of A \n");
                     cp0 = left;
                     ac0 = normalize_angle((double)(- (atan2(cp0.y, cp0.x) - PI_2)));
                 }
 
                 if(!isnan(right.x)){
-                    printf("recomputation of B \n");
                     cp1 = right;
                     ac1 = normalize_angle((double) (- (atan2(cp1.y, cp1.x) - PI_2)));    
                 }
-            }else
-                printf("-------- \n");
-
+            }
+            
             // wrong side of the wall
-            /* if(ac1 < ac0){
+            /*if(ac1 < ac0){
                 printf("WRONG SIDE WALL \n");
                 continue;
-            } */
+            }¨*/
 
             // wall attributes
             // todo: parse wad to get real values of wall floor and ceiling heights
@@ -289,9 +314,10 @@ static void render(game_state *g_)
 
             // ignore far -HFOV/2..+HFOV/2
             // check if angles are entirely far of bounds
-            if((ac0 < -(HFOV / 2) && ac1 < -(HFOV / 2))
+            if( (ac0 < -(HFOV / 2) && ac1 < -(HFOV / 2))
                 || (ac0 > +(HFOV / 2) && ac1 > +(HFOV/ 2))
             ){
+                // printf("ignored. [%d %d]\n", (int)(radToDeg(ac0)),(int)(radToDeg(ac1)) );
                 continue;
             }
             // wall y-scale
@@ -311,7 +337,7 @@ static void render(game_state *g_)
                    wy_t0 = (WINDOW_HEIGHT / 2) + (int) (z_ceiling * sy0),
                    wy_t1 = (WINDOW_HEIGHT / 2) + (int) (z_ceiling * sy1);
 
-            /* 
+            
             printf(
                     "\033[1m------------- WALL[%d]: ---------------\033[0m\
                     \n\033[32m x-degrees:\t A[x=%d °=%d] B[x=%d °=%d]   \033[0m \
@@ -320,7 +346,7 @@ static void render(game_state *g_)
                     i,
                     wx0, (int)(radToDeg(ac0)), wx1, (int)(radToDeg(ac1)), sy0, sy1, (int)cp0.y, (int)cp1.y
             );
-            */
+            
             
             
             // wall-outines
@@ -329,6 +355,7 @@ static void render(game_state *g_)
             d_line(g_, wx0, wy_t1, wx1, wy_t1, 0xFF00FF);
             d_line(g_, wx0, wy_b0, wx0, wy_t0, 0xFF00FF);
             d_line(g_, wx1, wy_b1, wx1, wy_t1, 0xFF00FF);
+            // ver
             // wall-filled
             //
             // todo:
