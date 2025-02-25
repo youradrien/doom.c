@@ -254,7 +254,6 @@ static void render(game_state *g_)
 
             // both are behind player -> wall behind camera
             if(cp0.y <= 0 && cp1.y <= 0){
-                printf("BRRR \n");
                 continue;
             }
 
@@ -263,8 +262,7 @@ static void render(game_state *g_)
                 ac0 = normalize_angle((double)(- (atan2(cp0.y, cp0.x)  - PI_2))),
                 ac1 = normalize_angle((double)(- (atan2(cp1.y, cp1.x) - PI_2)));
 
-            printf("[A: %d°]\t[B: %d] \n", (int)(radToDeg(ac0)), (int)(radToDeg(ac1)));
-            bool slim_thick = false;
+            // printf("(1)\t [A: %d°]\t[B: %d] \n", (int)(radToDeg(ac0)), (int)(radToDeg(ac1)));
             // clip against frustum (if wall intersects with clip planes)
             if(  
                 (cp0.y < ZNEAR)
@@ -272,7 +270,7 @@ static void render(game_state *g_)
                 || (ac0 > +(HFOV / 2)) // 1
                 // || (ac0 < -(HFOV / 2)) // 2
                 || (ac1 < -(HFOV / 2)) // 1
-               // || (ac1 > +(HFOV / 2)) // 2
+                // || (ac1 > +(HFOV / 2)) // 2
             ){
                 // todo: make case-2 work
                 //
@@ -281,6 +279,15 @@ static void render(game_state *g_)
                     left = intersect_segments(cp0, cp1, znl, zfl),
                     right = intersect_segments(cp0, cp1, znr, zfr);
 
+               if((
+                    !(ac0 > +(HFOV / 2) || ac1 < -(HFOV / 2))
+                ) && (
+                    ac0 < -(HFOV / 2) || ac1 > +(HFOV / 2) 
+                )
+                ){
+                    // left = (right);
+                    //right = intersect_segments(cp0, cp1, znl, zfl);
+                }
 
                 // recompute angles ac0, ac1
                 if(!isnan(left.x)){
@@ -291,15 +298,15 @@ static void render(game_state *g_)
                     cp1 = right;
                     ac1 = normalize_angle((double) (- (atan2(cp1.y, cp1.x) - PI_2)));    
                 }
+                if(isnan(left.x) && isnan(right.x))
+                {}
             }
             
             // wrong side of the wall
             if(ac0 < ac1)
             {
-                printf("lowkey catchted here tho mb \n");
                 continue;
             }
-
             // wall attributes
             // todo: parse wad to get real values of wall floor and ceiling heights
             float z_floor = 12.0f;
@@ -333,7 +340,7 @@ static void render(game_state *g_)
                    wy_t0 = (WINDOW_HEIGHT / 2) + (int) (z_ceiling * sy0),
                    wy_t1 = (WINDOW_HEIGHT / 2) + (int) (z_ceiling * sy1);
 
-            /*
+            /* 
             printf(
                     "\033[1m------------- WALL[%d]: ---------------\033[0m\
                     \n\033[32m x-degrees:\t A[x=%d °=%d] B[x=%d °=%d]   \033[0m \
@@ -343,6 +350,7 @@ static void render(game_state *g_)
                     wx0, (int)(radToDeg(ac0)), wx1, (int)(radToDeg(ac1)), sy0, sy1, (int)cp0.y, (int)cp1.y
             );
             */
+            
             
             // wall-outines
             // bottom-top-left-right
@@ -393,6 +401,19 @@ static void render(game_state *g_)
     }
 }
 
+static void add_wall(game_state *g_, int x1, int y1, int x2, int y2)
+{
+    wall *l = &(g_->scene._walls[g_->scene._walls_ix]);
+
+    l->a.x = x1;  
+    l->a.y = y1;   
+
+    l->b.x = WINDOW_WIDTH/2;
+    l->b.y = 200;
+    l->color = 0xFF00FF;
+
+    g_->scene._walls_ix++;
+}
 static void scene(game_state *g_)
 { 
     g_->scene._walls = (wall *) malloc(100 * sizeof(wall));
@@ -400,19 +421,7 @@ static void scene(game_state *g_)
     {
 
     }
-    wall *l = &(g_->scene._walls[0]);
-
-    l->a.x = WINDOW_WIDTH / 2;  l->b.x = WINDOW_WIDTH/2;
-    l->a.y = 100;               l->b.y = 200;
-    l->color = 0xFF00FF;
-
-    /*
-    l = &(g_->scene._walls[1]);
-    l->a.x = WINDOW_WIDTH / 2; l->b.x = WINDOW_WIDTH/2 + 300;
-    l->a.y = 100;              l->b.y = 100;
-    l->color = 0xFFFF00;
-    */ 
-    g_->scene._walls_ix = 1;
+    add_wall(g_, 300, 100, 300, 200); 
 }
 
 static void multiThread_present(game_state *g_)
