@@ -28,7 +28,7 @@
 #define EYE_Z 1.65f
 #define FOV 90
 // horizontal fov
-#define HFOV DEG2RAD(FOV)
+#define HFOV DEG2RAD(90.0f)
 // vertical fov
 #define VFOV 0.5f
 
@@ -64,6 +64,8 @@ typedef struct s_wall
 { 
     v2	a;
     v2	b;
+    v2	p_a;
+    v2	p_b;
     uint32_t color;
 } wall;
 
