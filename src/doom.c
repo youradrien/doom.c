@@ -334,23 +334,23 @@ static void render(game_state *g_)
                 }  
    
                 // if we define dx=x2-x1 and dy=y2-y1, 
-                // then the normals are (-dy, dx) and (dy, -dx).
+                // then the normals are (-dy, dx) and (dy, -dx).  
                 const v2 
                     middle_wall = (v2){
                         (l->a.x + l->b.x) / 2.0f,
                         (l->a.y + l->b.y) / 2.0f
                     },
                     wall_normal = (v2){
-                        -(l->a.y - l->b.y),
-                        (l->a.x - l->b.x)
+                        (l->b.x - l->a.x),
+                        (l->b.y - l->a.y)
                     },
                     p_to_wall = (v2){
-                        g_->p.pos.x - middle_wall.x,
-                        g_->p.pos.y - middle_wall.y
+                        g_->p.pos.x - l->a.x,
+                        g_->p.pos.y - l->a.y
                     };
                 const f32
-                    dot_p_wall = (p_to_wall.x * middle_wall.x + p_to_wall.y * middle_wall.y); 
-                float cross = cross_product(l->a, l->b, g_->p.pos);
+                    cross = wall_normal.x * p_to_wall.y - wall_normal.y * p_to_wall.x;
+                //float cross = cross_product(l->a, l->b, g_->p.pos);
                 if(cross < 0.0f) // doesnt face each other
                 { 
                     left = (right);
@@ -371,9 +371,10 @@ static void render(game_state *g_)
             
             // wrong side of the wall
             if((ac0 < ac1 && below_)
-                || (ac1 < ac0 && (!below_)))
+                || (ac1 < ac0 && (!below_))
+            )
             {
-                continue;
+                //continue;
             }
             // wall attributes
             // todo: parse wad to get real values of wall floor and ceiling heights
@@ -384,6 +385,8 @@ static void render(game_state *g_)
             // check if angles are entirely far of bounds
             if( (ac0 < -(HFOV / 2) && ac1 < -(HFOV / 2))
                 || (ac0 > +(HFOV / 2) && ac1 > +(HFOV/ 2))
+                || (ac0 < -(HFOV / 2 ) && ac1 > +(HFOV / 2))
+                || (ac0 > +(HFOV / 2) && ac1 < -(HFOV / 2))
             ){
                 continue;
             }
