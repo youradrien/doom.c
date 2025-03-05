@@ -308,6 +308,29 @@ static void render(game_state *g_)
                 ac1 = normalize_angle(-(atan2(cp1.y, cp1.x) - PI_2));
 
             bool below_ = true;
+            const v2 
+                middle_wall = (v2){
+                    (l->a.x + l->b.x) / 2.0f,
+                    (l->a.y + l->b.y) / 2.0f
+                },
+                wall_normal = (v2){
+                    (l->b.x - l->a.x),
+                    (l->b.y - l->a.y)
+                },
+                p_to_wall = (v2){
+                    g_->p.pos.x - l->a.x,
+                    g_->p.pos.y - l->a.y
+                };
+            const f32
+                cross = wall_normal.x * p_to_wall.y - wall_normal.y * p_to_wall.x;
+            if(cross < 0.0f) // doesnt face each other
+            {
+                below_ = false;
+            }
+            if(cross == 0.0f)
+            {
+                continue;
+            }       
             // clip against frustum (if wall intersects with clip planes)
             if(  
                 (cp0.y < ZNEAR)
@@ -317,8 +340,6 @@ static void render(game_state *g_)
                 || (ac1 < -(HFOV / 2)) // 1
                 || (ac1 > +(HFOV / 2)) // 2
             ){ 
-                // todo: make case-2 work
-                //
                 // know where the intersection is on the (-HFOV/2 or HFOV/2) line delimiting player's fov
                 v2 
                     left = intersect_segments(cp0, cp1, znl, zfl),
@@ -330,34 +351,30 @@ static void render(game_state *g_)
                     ac0 < -(HFOV / 2) || ac1 > +(HFOV / 2) 
                 )
                 ){
+                    /*
                     // left = (right);
-                }  
+                    if(ac0 < -(HFOV/2))
+                        //printf("SORTIE-GAUCHE \n");
+                    if(ac1 > +(HFOV/2))
+                        //printf("SORTIE-DROITE \n");
+                    */
+                }else
+                {
+                    /*
+                    if(ac0 > +(HFOV /2))
+                        printf("SORTIE-GAUCHE \n");
+                    if(ac1 < -(HFOV / 2))
+                        printf("SORTIE-DROITE \n");
+                    */
+                } 
    
                 // if we define dx=x2-x1 and dy=y2-y1, 
-                // then the normals are (-dy, dx) and (dy, -dx).  
-                const v2 
-                    middle_wall = (v2){
-                        (l->a.x + l->b.x) / 2.0f,
-                        (l->a.y + l->b.y) / 2.0f
-                    },
-                    wall_normal = (v2){
-                        (l->b.x - l->a.x),
-                        (l->b.y - l->a.y)
-                    },
-                    p_to_wall = (v2){
-                        g_->p.pos.x - l->a.x,
-                        g_->p.pos.y - l->a.y
-                    };
-                const f32
-                    cross = wall_normal.x * p_to_wall.y - wall_normal.y * p_to_wall.x;
-                //float cross = cross_product(l->a, l->b, g_->p.pos);
-                if(cross < 0.0f) // doesnt face each other
+                // then the normals are (-dy, dx) and (dy, -dx).
+                if(!(below_)) // doesnt face each other
                 { 
                     left = (right);
                     right = intersect_segments(cp0, cp1, znl, zfl);
-                    below_ = false;
                 }
-                
                 // recompute angles ac0, ac1         
                 if(!isnan(left.x)){
                     cp0 = left;
@@ -374,7 +391,7 @@ static void render(game_state *g_)
                 || (ac1 < ac0 && (!below_))
             )
             {
-                //continue;
+                continue;
             }
             // wall attributes
             // todo: parse wad to get real values of wall floor and ceiling heights
@@ -383,10 +400,9 @@ static void render(game_state *g_)
 
             // ignore far -HFOV/2..+HFOV/2
             // check if angles are entirely far of bounds
-            if( (ac0 < -(HFOV / 2) && ac1 < -(HFOV / 2))
-                || (ac0 > +(HFOV / 2) && ac1 > +(HFOV/ 2))
-                || (ac0 < -(HFOV / 2 ) && ac1 > +(HFOV / 2))
-                || (ac0 > +(HFOV / 2) && ac1 < -(HFOV / 2))
+            //printf("A:%d b:%d \n", (int)(radToDeg(ac0)), (int)(radToDeg(ac1)));
+            if( (ac0 < -(HFOV / 2) && ac1 < -(HFOV / 2.0f))
+                || (ac0 > +(HFOV / 2) && ac1 > +(HFOV/ 2.0f)) 
             ){
                 continue;
             }

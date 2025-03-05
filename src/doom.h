@@ -33,7 +33,7 @@
 #define VFOV 0.5f
 
 #define ZNEAR 0.0001f
-#define ZFAR  128.0f
+#define ZFAR  260.0f
 
 #define FPS 60
 #define FRAME_TARGET_TIME (1000/FPS)
