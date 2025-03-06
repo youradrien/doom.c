@@ -83,7 +83,7 @@ static void player_movement(game_state *g_)
     //printf("p->rot: %f° \n", g_->p.rotation);
 }
 
-static void set_pixel_color(game_state *g_, int x, int y, int c)
+static inline void set_pixel_color(game_state *g_, int x, int y, int c)
 {
     // prevents segfaults
     if(x < 0 || y < 0 || x > WINDOW_WIDTH || y > WINDOW_HEIGHT)
@@ -95,10 +95,10 @@ static void set_pixel_color(game_state *g_, int x, int y, int c)
 // bresenham's algorithm
 static void d_line(game_state *g_, int x0, int y0, int x1, int y1, uint32_t color)
 {
-    int dx = abs(x1 - x0);
-    int dy = abs(y1 - y0);
-    int sx = (x0 < x1) ? 1 : -1;
-    int sy = (y0 < y1) ? 1 : -1;
+    const int dx = abs(x1 - x0);
+    const int dy = abs(y1 - y0);
+    const int sx = (x0 < x1) ? 1 : -1;
+    const int sy = (y0 < y1) ? 1 : -1;
     int err = dx - dy;
 
     while (1)
@@ -109,7 +109,7 @@ static void d_line(game_state *g_, int x0, int y0, int x1, int y1, uint32_t colo
             break; // complete line
         }
 
-        int e2 = err * 2;
+        const int e2 = err * 2;
         if (e2 > -dy)
         {
             err -= dy;
@@ -127,8 +127,7 @@ static void vert_line(game_state *g_, int x, int y0, int y1, uint32_t color)
 {
     for(uint32_t i = y0; i < y1; i++)
     {
-        const int ix = (WINDOW_WIDTH * i) + x;
-        g_->buffer[ix] = (color);
+        set_pixel_color(g_, x, i, color);
     }
 }
 
@@ -441,18 +440,34 @@ static void render(game_state *g_)
             
             // wall-outines
             // bottom-top-left-right
-            d_line(g_, wx0, wy_b0, wx1, wy_b1, 0xFF00FF);
-            d_line(g_, wx0, wy_t1, wx1, wy_t1, 0xFF00FF);
-            d_line(g_, wx0, wy_b0, wx0, wy_t0, 0xFF00FF);
-            d_line(g_, wx1, wy_b1, wx1, wy_t1, 0xFF00FF);
+            d_line(g_, wx0, wy_b0, wx1, wy_b1, 0xFFFF00);
+            d_line(g_, wx0, wy_t1, wx1, wy_t1, 0xFFFF00);
+            d_line(g_, wx0, wy_b0, wx0, wy_t0, 0xFFFF00);
+            d_line(g_, wx1, wy_b1, wx1, wy_t1, 0xFFFF00);
 
             // A-B rects
             d_rect(g_, wx0 - 2, wy_t1 - 25, 4, 4, 0x00FFFF);
             d_rect(g_, wx1 - 2, wy_t1 - 25, 4, 4, 0x00FF00);
-
-            // ver
+         
             // wall-filled
-  
+            // with verlines
+            bool s = (wx1 > wx0);
+            const int 
+                x1 = s ? (wx0) : (wx1),
+                x2 = s ? (wx1) : (wx0);
+            for(uint16_t i = x1 + 1; i < x2; i++)
+            {
+                const int 
+                    y_a = wy_b0 + (wy_b1 - wy_b0) 
+                        * (s ? (i - x1) : (i - x1)) / (x2 - x1),
+                    y_b = wy_t0 + (wy_t1 - wy_t0) 
+                        * (s ? (i - x1) : (i - x1)) / (x2 - x1);
+                vert_line(g_, 
+                    s ? (i) : (x2 + (x1 - i)), 
+                    y_b + 1,
+                    y_a, 
+                0xFFFFFF);
+            } 
 
             // todo:
             // texture-mapping
