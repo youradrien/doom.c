@@ -86,7 +86,7 @@ static void player_movement(game_state *g_)
 static inline void set_pixel_color(game_state *g_, int x, int y, int c)
 {
     // prevents segfaults
-    if(x < 0 || y < 0 || x > WINDOW_WIDTH || y > WINDOW_HEIGHT)
+    if(x < 0 || y < 0 || x > WINDOW_WIDTH || y > WINDOW_HEIGHT)
         return;
     int ix = (WINDOW_WIDTH * y) + x;
     g_->buffer[ix] = (c);
@@ -200,6 +200,7 @@ static inline v2 intersect_segments(v2 a0, v2 a1, v2 b0, v2 b1) {
             a0.y + (t * (a1.y - a0.y)) })
         : ((v2) { NAN, NAN });
 }
+
 
 
 // convert angle to [-(FOV/2)...+(FOV/2)] => [x in 0..WINDOW_WIDTH] 
@@ -347,7 +348,7 @@ static void render(game_state *g_)
                 if((
                     !(ac0 > +(HFOV / 2) || ac1 < -(HFOV / 2))
                 ) && (
-                    ac0 < -(HFOV / 2) || ac1 > +(HFOV / 2) 
+                    ac0 < -(HFOV / 2) || ac1 > +(HFOV / 2) 
                 )
                 ){
                     /*
@@ -440,10 +441,10 @@ static void render(game_state *g_)
             
             // wall-outines
             // bottom-top-left-right
-            d_line(g_, wx0, wy_b0, wx1, wy_b1, 0xFFFF00);
-            d_line(g_, wx0, wy_t1, wx1, wy_t1, 0xFFFF00);
-            d_line(g_, wx0, wy_b0, wx0, wy_t0, 0xFFFF00);
-            d_line(g_, wx1, wy_b1, wx1, wy_t1, 0xFFFF00);
+            d_line(g_, wx0, wy_b0, wx1, wy_b1, 0xFFFFFF);
+            d_line(g_, wx0, wy_t1, wx1, wy_t1, 0xFFFFFF);
+            d_line(g_, wx0, wy_b0, wx0, wy_t0, 0xFFFFFF);
+            d_line(g_, wx1, wy_b1, wx1, wy_t1, 0xFFFFFF);
 
             // A-B rects
             d_rect(g_, wx0 - 2, wy_t1 - 25, 4, 4, 0x00FFFF);
@@ -466,7 +467,7 @@ static void render(game_state *g_)
                     s ? (i) : (x2 + (x1 - i)), 
                     y_b + 1,
                     y_a, 
-                0xFFFFFF);
+                l->color);
             } 
 
             // todo:
@@ -505,24 +506,187 @@ static void render(game_state *g_)
             // b
             d_rect(g_, g_->scene._walls[i].b.x - 2,  g_->scene._walls[i].b.y - 2, 4, 4, 0x00FF00); 
         }
-
+        // vertices
+        /*
+        if(g_->scene._verts_count > 1){
+            for(uint32_t i = 0; i < g_->scene._verts_count; i ++)
+            {
+                d_rect(g_, 
+                       g_->scene._verts[i].x * 10, g_->scene._verts[i].y * 10, 
+                       2, 2, 
+                0xFF0000);
+            }
+        }*/
     }
 }
 
-static void add_wall(game_state *g_, int x1, int y1, int x2, int y2)
+static void add_wall(game_state *g_, int x1, int y1, int x2, int y2, int color)
 {
     wall *l = &(g_->scene._walls[g_->scene._walls_ix]);
 
-    printf("WALL %d \n", g_->scene._walls_ix);
+    if(x1 > WINDOW_WIDTH) x1 = (WINDOW_WIDTH - 1);
+    if(x1 < 0) x1 = 0;
+    if(x2 < 0) x2 = 0;
+    if(x2 > WINDOW_HEIGHT) x2 = (WINDOW_HEIGHT - 1);
     l->a.x = x1;  
     l->a.y = y1;   
 
-    l->b.x = x1;
+    l->b.x = x2;
     l->b.y = y2;
-    l->color = 0xFF00FF;
+    l->color = color;
 
     g_->scene._walls_ix++;
 }
+
+// txt to data
+static void parse_txt(game_state *g_, const char *f)
+{
+    const int read_len = 100;
+    char bfr[read_len];
+    if(!f || !g_)
+        return ;
+    int fd = open(f, O_RDONLY);
+
+    printf("LOADING %s file \n", f);
+    if(!fd)
+    {
+        perror("Error opening the file \n");
+        return ;
+    }
+    // read until EOF
+    size_t bytes;
+    while((bytes = read(fd, bfr, sizeof(bfr) - 1)) > 0)
+    {
+        if (bytes == -1) {
+            perror("Error reading the file");
+            close(fd);
+            return ;
+        }
+        bfr[bytes] = '\0';
+
+        // each \t ' ' \n
+        char line[33];  // Make sure the buffer is large enough for 32 characters + null terminator
+        int read_n = 0, stored_n = 0;
+        while(sscanf(bfr + stored_n, "%32s%n", line, &read_n) && stored_n < read_len)
+        {
+            line[read_n] = '\0';
+            // vertices
+            if(!strncmp(line, "vertex", 6))
+            {
+                stored_n += 8;
+                int y = -1;
+                while(sscanf(bfr + stored_n, "%32s%n", line, &read_n) && stored_n < read_len) 
+                { 
+                    line[read_n] = '\0';
+                    if(y == -1){
+                        // printf("+y: %s \n", line);
+                        y = atoi(line); 
+                    }else{
+                        // printf("+x: %s %f%f\n", line, g_->scene._verts[0].x, g_->scene._verts[0].y);
+                        const int x = atoi(line); 
+                        const uint32_t c = g_->scene._verts_count;
+                        g_->scene._verts = (v2 *)realloc(g_->scene._verts, sizeof(v2) * (c + 1));
+                        if(!g_->scene._verts)
+                            return;
+                        g_->scene._verts[c] = (v2){
+                            x,
+                            y 
+                        };
+                        g_->scene._verts_count ++;
+                    }
+                    
+                    if(*(bfr + stored_n + (read_n)) == '\n')
+                        break;                       
+                    stored_n += read_n;
+                }
+            }
+            // sections
+            else if(!strncmp(line, "sector", 5))
+            {
+                int c = 0, b = 0;  
+                uint32_t vertices = 0;
+                const int k = g_->scene._sectors_count;
+                stored_n += 8;
+                g_->scene._sectors = (sector *) realloc(g_->scene._sectors, sizeof(sector) * (k + 1));
+                if(!g_->scene._sectors)
+                    return ;
+                g_->scene._sectors[k].n_neighbors = 0;
+                g_->scene._sectors[k].neighbors = (sector **)calloc(sizeof(sector *), 1);
+                g_->scene._sectors[k].vertices = (v2 *)calloc(sizeof(v2), 1);
+                while(sscanf(bfr + stored_n, "%32s%n", line, &read_n) && stored_n < read_len) 
+                { 
+                    line[read_n] = '\0';
+                    if(c == 0){
+                        g_->scene._sectors[k].floor = (float)(atoi(line));
+                    }
+                    else if (c == 1){
+                        g_->scene._sectors[k].ceil = (float)(atoi(line));
+                    }else
+                    {
+                        
+                        if(*(bfr + stored_n + (read_n)) == '\t')
+                        {
+                           b = 1; 
+                        }
+                        if(!b) // load vertices
+                        {
+                            const int 
+                                v_ = g_->scene._sectors[k].n_vertices,
+                                ix = atoi(line);
+                            if(!(ix < 0 || ix > g_->scene._verts_count))
+                            { 
+                                const v2 vert = g_->scene._verts[ix];
+                                g_->scene._sectors[k].vertices = (v2 *) realloc(
+                                    g_->scene._sectors[k].vertices, sizeof(v2) * (v_ + 1)
+                                );
+                                g_->scene._sectors[k].vertices[v_] = (v2)(vert);
+                                g_->scene._sectors[k].n_vertices = (v_ + 1);
+                                vertices++;
+                            }
+                        }else{ // load neighbors
+                            
+                            const int a = atoi(line);
+                            if(a > g_->scene._sectors_count || a < 0) //
+                            {
+                                
+                                const int ix = g_->scene._sectors[k].n_neighbors;                               
+                                g_->scene._sectors[k].neighbors = (sector **)(
+                                    realloc(g_->scene._sectors[k].neighbors, sizeof(sector *) * ix + 1)
+                                );
+                                g_->scene._sectors[k].neighbors[ix] = &(g_->scene._sectors[ix]);
+                                g_->scene._sectors[k].n_neighbors ++; 
+                                
+                            }else{
+
+                            }
+                            
+                        }
+                
+                    }
+                    if(*(bfr + stored_n + (read_n)) == '\n')
+                    {
+                        g_->scene._sectors[k].n_vertices = (vertices);
+                        g_->scene._sectors_count++;
+                        break;
+                    }               
+                    stored_n += read_n;
+                    c++;
+                }
+            }
+            else
+            { 
+                stored_n += (read_n);
+            }
+        }
+    }
+
+    close(fd);
+    printf("\033\[32m Successfully loaded map: %s   [%d vertices, %d sectors]...\n", f, g_->scene._verts_count, g_->scene._sectors_count);
+}
+
+
+
+
 static void scene(game_state *g_)
 { 
     g_->scene._walls = (wall *) malloc(100 * sizeof(wall));
@@ -530,8 +694,19 @@ static void scene(game_state *g_)
     {
 
     }
-    add_wall(g_, 300, 200, 300, 400);
-    //add_wall(g_, 300, 250, 300, 300);
+    add_wall(g_, 600, 200, 600, 400, 0xBBBB00);
+    add_wall(g_, 100, 100, 200, 500, 0xBB00BB);
+    add_wall(g_, 200, 500, 600, 400, 0x00FF00);
+
+    g_->scene._verts = (v2 *)malloc(sizeof(v2));
+    g_->scene._verts[0] = (v2){
+        12.0f,
+        4.0f
+    };
+    g_->scene._sectors = (sector *) malloc(sizeof(sector));
+    g_->scene._verts_count = 1;
+    g_->scene._sectors_count = 1;
+    parse_txt(g_, "maps/map.txt");
 }
 
 static void multiThread_present(game_state *g_)

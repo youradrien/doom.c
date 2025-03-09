@@ -12,6 +12,8 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <inttypes.h>
+#include <unistd.h> 
+#include <fcntl.h>
 
 #define ASSERT(_e, ...) if (!(_e)) { fprintf(stderr, __VA_ARGS__); exit(1); }
 
@@ -33,7 +35,7 @@
 #define VFOV 0.5f
 
 #define ZNEAR 0.0001f
-#define ZFAR  260.0f
+#define ZFAR  620.0f
 
 #define FPS 60
 #define FRAME_TARGET_TIME (1000/FPS)
@@ -69,10 +71,32 @@ typedef struct s_wall
     uint32_t color;
 } wall;
 
+typedef struct s_sector s_sector;
+typedef struct s_sector
+{
+    v2		*vertices;
+    f32		floor;
+    f32		ceil;
+    s_sector	**neighbors;
+    uint16_t	n_vertices;
+    uint16_t	n_neighbors;
+}   sector;
+
 typedef struct s_scene
 {
+    // walls
     wall *_walls;
     int	 _walls_ix;
+
+    // vertices
+    v2	*_verts;
+    uint32_t _verts_count;
+
+    // sectors
+    sector	*_sectors;
+    uint32_t	_sectors_count;	
+
+    // light *_sun;
 }   t_scene;
 
 
