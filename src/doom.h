@@ -126,6 +126,9 @@ typedef struct s_scene
     BSP_node	*bsp_head;
     unsigned int _bsp_depth;
     int		_ibsp;
+    wall	*left_region[300];
+    wall	*right_region[300];
+    int		l_region_i, r_region_i;
     int		_draw_bspleft;
     int		_draw_bspright;
     

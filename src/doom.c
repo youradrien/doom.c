@@ -254,130 +254,17 @@ static f32 cross_product(v2 A, v2 B, v2 P) {
     return dx * py - dy * px;
 }
 
-// detect nearest wall from a wall (below or before, depends on side)
-static const wall *heuristic_bsp(const game_state *g_)
-{ 
-    // all [linedefs/walls] of the map
-    // each [linedef/wall] has :
-    //  - linedefs in front
-    //  - linedefs in back 
-    //  - splits
-    // [cost] is based on 2 factors
-    // 1. Balance: How evenly it splits the front and back groups.
-    // 2. Splits: How many linedefs get split into two.i
-    if(g_->scene._walls_ix > 262000) // quickly prevent stack overflows...
-        return NULL;
-    f32 s_score = INT_MAX;
-    wall *selected_wall = NULL;
-    for(uint32_t i = 0; i < g_->scene._walls_ix; i ++)
-    {
-        wall *w = &(g_->scene._walls[i]);
-        if(w->_in_bsp)
-            continue;
-        const v2 ac[2] = {
-            w->a,
-            w->b
-        };
-        // score format is : [linedefs in front | linedefs in back | splits]
-        int scores[g_->scene._walls_ix][3];
-        // re-loop each [linedefs/walls]
-        for(uint32_t j = 0; j < g_->scene._walls_ix; j++)
-        {
-            // either comparing to itself or wall alr in the bsp tree
-            if(&(g_->scene._walls[j]) == w
-                || (&(g_->scene._walls[j]))->_in_bsp)
-                continue;
-            const wall 
-                *j_w = &(g_->scene._walls[j]);
-            f32
-                j_eq[2] = {0.0f, 0.0f};
-            // D = (x − P1.x) * (P2.y − P1.y)−(y − P1.y) * (P2.x−P1.x)
-            // P1 and P2 are the [linedef/wall] endpoints
-            // (x,y) are the points of actual [linedef/wall] (A and B)
-            // D > 0 → Point is in front.
-            // D < 0 → Point is in back.
-            // D = 0 → Point is exactly on the partition.
-            for(uint32_t k = 0; k < 2; k++)
-            {
-                const f32 
-                    eq = (ac[k].x - j_w->a.x) * (j_w->b.y - j_w->b.y) 
-                            - (ac[k].y - j_w->a.y) * (j_w->a.x - j_w->b.x);
-
-                j_eq[k] = (eq);
-            }
-            // front
-            if(j_eq[0] > 0 && j_eq[1] > 0){
-                scores[i][0]++;
-            }// back
-            else if (j_eq[0] < 0 && j_eq[1] < 0){
-                scores[i][1]++;
-            }else{
-                // if linedef lies exactly on the partition (D = 0), assign it to the front
-                if(j_eq[0] == 0 && j_eq[1] == 0)
-                    scores[i][0]++;
-                else
-                    scores[i][2]++;
-            }
-        }
-        for(uint32_t j = 0; j < g_->scene._walls_ix; j++)
-        {
-            if( ( (&(g_->scene._walls[j]) == w)
-                || (&(g_->scene._walls[j]))->_in_bsp)
-                || (!scores[i][0] && !scores[i][1] && !scores[i][2])
-            )
-                continue;
-            const f32 score = (abs(
-                    max(scores[i][0], scores[i][1])
-                    - 
-                    min(scores[i][0], scores[i][1])
-                ) + scores[i][2]);
-            // linedef with the fewest splits and most balanced partitioning is chosen.
-            if(score < s_score)
-            {
-                s_score = (f32)(score);
-                selected_wall = (wall *)(w);
-            } 
-            // If multiple linedefs have the same split count, prefer the one closest to the center of the map.i
-            if(score == s_score){ }
-        }
-    }
-    if(selected_wall != NULL)
-        selected_wall->_in_bsp = (true);
-    return ((const wall*)(selected_wall));
-}
-
-static BSP_node *bsp_(game_state *g_)
-{
-    BSP_node* node = (BSP_node*)malloc(sizeof(BSP_node));
- 
-    const wall *w = (heuristic_bsp(g_));
-    node->_front = NULL;
-    node->_back = NULL;
-    if(!w){
-        return (node);
-    }
-    node->_partition = (wall *)(w);
-
-    node->_front = bsp_(g_);
-    node->_back = bsp_(g_);
-    g_->scene._bsp_depth++;
-    return (node);
-}
-
 // 2D Coordinates to 3D
 // 3. Wall-Cliping (test if lines intersects with player viewcone/viewport by using vector2 cross product)
 // 4. Perspective transformation  (scaling lines according to their dst from player, for appearance of perspective (far-away objects are smaller).
 // 5. [COMING SOON ? ] Z-buffering (track depth of pixel to avoid rendering useless surfaces)
 static void render(game_state *g_)
 {
-    // transform world view to 1st-person view   
-    
+    // transform world view to 1st-person view    
     for(uint32_t i = 0; i < g_->scene._walls_ix; i ++)
     {     
         const wall *l = &(g_->scene._walls[i]);
-
-        //if(l->_op_sect)
-            ///continue;
+ 
         const v2
             zdr = rotate_v2((v2){ 0.0f, 1.0f}, + (HFOV / 2.0f)),
             zdl = rotate_v2((v2){ 0.0f, 1.0f}, - (HFOV / 2.0f)),
@@ -405,11 +292,7 @@ static void render(game_state *g_)
             ac1 = normalize_angle(-(atan2(cp1.y, cp1.x) - PI_2));
 
         bool below_ = true;
-        const v2 
-            middle_wall = (v2){
-                (l->a.x + l->b.x) / 2.0f,
-                (l->a.y + l->b.y) / 2.0f
-            },
+        const v2  
             wall_normal = (v2){
                 (l->b.x - l->a.x),
                 (l->b.y - l->a.y)
@@ -629,7 +512,7 @@ static void render_2d_bsptree(BSP_node *h, game_state *g_, signed int x)
         if(h->_back)
         {
             d_rect(g_,
-                   (WINDOW_WIDTH / 2 - 10) + (x),
+                   (WINDOW_WIDTH / 2 - 10) - (x),
                    (int)((float)(WINDOW_HEIGHT) * 0.80f) + (g_->scene._ibsp * 10), 
                    5, 5, 0xFFFFFF);
             render_2d_bsptree(h->_back, g_, (signed int)(x - 10));
@@ -706,9 +589,32 @@ static void render_minimap(game_state *g_)
     g_->scene._draw_bspleft = 0;
     g_->scene._draw_bspright = 0;
     if(g_->scene.bsp_head->_front 
-        || g_->scene.bsp_head->_back){
+        || g_->scene.bsp_head->_back)
+    {
         // render_2d_bsptree(g_->scene.bsp_head, g_, 0); 
     }
+}
+
+
+// Recursive function to print the BSP tree
+void printBSP(BSP_node *node, int depth)
+{
+    if (!node) return;
+
+    for (int i = 0; i < depth; i++)
+        printf("│   \033[31m");
+    if (node->_partition) {
+        printf("├── [NODE] Partition: (%.2f, %.2f) → (%.2f, %.2f)\n",
+              (node->_partition)->a.x, (node->_partition)->a.y,
+                (node->_partition)->b.x, (node->_partition)->b.y);
+    } else {
+        printf("└── [LEAF]\n");
+        return;
+    }
+
+    // Recursively print front and back children
+    printBSP(node->_front, depth + 1);
+    printBSP(node->_back, depth + 1);
 }
 
 // txt to data
@@ -865,7 +771,7 @@ static void parse_txt(game_state *g_, const char *f)
     }
 
     close(fd);
-    printf("\033\[32m Successfully loaded map: %s   [%d vertices, %d sectors]...\n", f, g_->scene._verts_count, g_->scene._sectors_count);
+    printf("\033\[32m Successfully loaded map: %s   [%d vertices, %d sectors]...\033\[33m \n", f, g_->scene._verts_count, g_->scene._sectors_count);
 }
 
 static void scale_map(game_state *g_)
@@ -919,14 +825,7 @@ static void sector_to_walls(game_state *g_)
             const sector 
                 *s = &(g_->scene._sectors[i]),
                 *op_s = (g_->scene._sectors[i].portals[j]);
-            // printf("SECTOR[%d]  a:%f  b:%f   [height: %f]\n", i,a->x, b->x, g_->scene._sectors[i].ceil);
-            /* 
-            add_wall(g_, 
-                a->x, a->y, b->x, b->y, 
-                &(g_->scene._sectors[i]),
-                g_colors[i] 
-            );
-            */
+
             wall *l = &(g_->scene._walls[g_->scene._walls_ix]);
             // [A]
             l->a.x = a->x;  l->a.y = a->y;   
@@ -947,9 +846,187 @@ static void sector_to_walls(game_state *g_)
     } 
 }
 
+// detect nearest wall from a wall (below or before, depends on side)
+static wall *heuristic_bsp(const game_state *g_, wall *tracked_wall, wall *_region, unsigned int _region_len)
+{ 
+    // all [linedefs/walls] of the map
+    // each [linedef/wall] has :
+    //  - linedefs in front
+    //  - linedefs in back 
+    //  - splits
+    // [cost] is based on 2 factors
+    // 1. Balance: How evenly it splits the front and back groups.
+    // 2. Splits: How many linedefs get split into two.i
+    if(g_->scene._walls_ix > 262000 || !_region || !_region_len) // quickly prevent stack overflows... 
+    {
+        return NULL;
+    }
+    int s_score = INT_MAX;
+    wall *selected_wall = NULL;
+    for(uint32_t i = 0; i < _region_len; i ++)
+    {
+        const wall *w = &(_region[i]); 
+        if(w->_in_bsp
+            || w == tracked_wall)
+            continue;
+        const v2 ac[2] = {
+            w->a,
+            w->b
+        };
+        // score format is : [linedefs in front | linedefs in back | splits]
+        int scores[3] = {0, 0, 0};
+        // re-loop each [linedefs/walls]
+        for(uint32_t j = 0; j < _region_len; j++)
+        {
+            // either comparing to itself or wall alr in the bsp tree
+            if(&(_region[j]) == w
+                || (&_region[j]) == tracked_wall)
+                continue;
+            const wall 
+                *j_w = &(_region[j]);
+            f32
+                j_eq[2] = {0.0f, 0.0f};
+            // D = (x − P1.x) * (P2.y − P1.y)−(y − P1.y) * (P2.x−P1.x)
+            // P1 and P2 are the [linedef/wall] endpoints
+            // D > 0 → Point is in front.
+            // D < 0 → Point is in back.
+            // D = 0 → Point is exactly on the partition.
+            for(uint32_t k = 0; k < 2; k++)
+            {
+                const f32 
+                    eq = (ac[k].x - j_w->a.x) * (j_w->b.y - j_w->a.y)
+                            - (ac[k].y - j_w->a.y) * (j_w->b.x - j_w->a.x);
+                j_eq[k] = (eq);
+            }
+            // front
+            if(j_eq[0] > 0 && j_eq[1] > 0){
+                scores[0]++;
+            }// back
+            else if (j_eq[0] < 0 && j_eq[1] < 0){
+                scores[1]++;
+            }else{
+                // if linedef lies exactly on partition (D = 0), assign it to front
+                //if(j_eq[0] == 0 && j_eq[1] == 0)
+                //    scores[0]++;
+                //else
+                    scores[2]++;
+            }
+        } 
+        const int score = (abs(
+                scores[1] - scores[0]
+            ) + 
+            (scores[2] * 8)
+        );
+        //printf("wall=%d \t score: %d \n", i, score);
+        // linedef with the fewest splits and most balanced partitioning is chosen.
+        if(score < s_score)
+        {
+            s_score = (score);
+            selected_wall = (wall *)(w);
+        } 
+        // If multiple linedefs have the same split count, prefer the one closest to the center of the map.i
+        if(score == s_score){ }
+    }
+    // printf("ça score : %d \n", se);
+    return (selected_wall);
+}
+
+
+
+
+static BSP_node *bsp_(game_state *g_, wall *_region, unsigned int _region_size)
+{
+    // let leafs exists
+    //if(!_region || !_region_size)
+    //    return (NULL);
+    BSP_node* node = (BSP_node*)malloc(sizeof(BSP_node));
+
+    node->_partition = NULL;
+    node->_front = NULL;
+    node->_back = NULL;
+    if(_region_size < 1){
+        return (node); 
+    }
+
+    // allocate new region
+    wall 
+        *front_region = (wall *)malloc(sizeof(wall) * (_region_size)),
+        *back_region = (wall *)malloc(sizeof(wall) * (_region_size));
+
+    wall *_W = &(_region[0]);
+    //wall *_W = (heuristic_bsp(g_, , _region, _region_size));
+    if(!front_region || !back_region)
+        return (NULL);
+    int
+        front_len = 0,
+        back_len = 0,
+        colinears = 0; 
+    // attribute [left/right] new splitted regions
+    for(uint32_t i = 0; i < _region_size; i ++)
+    {
+        const wall * 
+            l_def = &(_region[i]);
+        if(l_def == _W) // ofc bro
+            continue;
+        wall *A = (_W);
+        wall *B = (wall *) (l_def);
+        // Compute direction vector of A
+        v2 dir_A = { A->b.x - A->a.x, A->b.y - A->a.y };
+        
+        // Compute normal vector of A (perpendicular)
+        v2 normal_A = { -dir_A.y, dir_A.x };
+        
+        // Compute vector from A.a to B.a
+        v2 vec_AB = { B->a.x - A->a.x, B->a.y - A->a.y };
+        
+        // Compute dot product of vec_AB with normal_A
+        float dot = vec_AB.x * normal_A.x + vec_AB.y * normal_A.y;
+        
+        // fill front_
+        if(dot > 0.0f)
+        {
+            front_region[front_len] = *((wall *)(l_def));
+            front_len++;
+        }
+        // fill back_
+        if (dot < 0.0f) 
+        {
+            back_region[back_len] = *((wall *)(l_def));
+            back_len++;
+        }
+        //handle colinears
+        if ( dot == 0.0f)
+        {
+            if(i % 2 == 0)
+            {
+                back_region[back_len] = *((wall *)(l_def));
+                back_len++;            
+            }else{
+                front_region[front_len] = *((wall *)(l_def));
+                front_len++;
+            }
+            colinears++;
+        }
+    }
+    printf("[%d](%d) --> left[%d] \t right[%d]   col[%d]\t \n",g_->scene._bsp_depth, _region_size, front_len, back_len, colinears);
+
+    node->_partition = (_W);
+    if(!_W || g_->scene._bsp_depth > 400){
+        return (node);
+    }
+    g_->scene._bsp_depth++;
+    node->_front = bsp_(g_, front_region, front_len);
+    node->_back = bsp_(g_, back_region, back_len);
+    return (node);
+}
+
+
+
+
+
 static void scene(game_state *g_)
 { 
-    g_->scene._walls = (wall *) malloc(100 * sizeof(wall));
+    g_->scene._walls = (wall *) malloc(200 * sizeof(wall));
     if (!g_->scene._walls)
         return;
 
@@ -968,15 +1045,70 @@ static void scene(game_state *g_)
     parse_txt(g_, "maps/bruh.txt"); 
     scale_map(g_);
     sector_to_walls(g_);
+    // INIT SPLITTED REGIONS
+    // ---------------------
     BSP_node* node = (BSP_node*)malloc(sizeof(BSP_node));
-
-    
-    node->_partition = &(g_->scene._walls[g_->scene._walls_ix / 2]); 
-    node->_front = bsp_(g_);
-    node->_back = bsp_(g_);
-
+    wall *splitter = &(g_->scene._walls[g_->scene._walls_ix / 2]);
+    // allocate new region
+    wall 
+        *front_region = (wall *)malloc(sizeof(wall) * (g_->scene._walls_ix)),
+        *back_region = (wall *)malloc(sizeof(wall) * (g_->scene._walls_ix));
+    if(!front_region || !back_region)
+        return ;
+    int
+        front_len = 0,
+        back_len = 0; 
+    // attribute [left/right] new splitted regions
+    for(int z = 0; z < 2; z++)
+    {
+        bool side = (z == 0);
+        for(uint32_t i = 0; i < g_->scene._walls_ix; i ++)
+        {
+            const wall * 
+                l_def = &(g_->scene._walls[i]);
+            if(l_def == splitter) // ofc bro
+                continue;
+            const f32 
+                eq = (l_def->a.x - splitter->a.x) * (splitter->b.y - splitter->a.y) -
+                    (l_def->a.y - splitter->a.y) * (splitter->b.x - splitter->a.x),
+                eq2 = (l_def->b.x - splitter->a.x) * (splitter->b.y - splitter->a.y) -
+                    (l_def->b.y - splitter->a.y) * (splitter->b.x - splitter->a.x);
+            // fill splits
+            if((side) && (
+                (eq > 0 && eq2 < 0) 
+                || (eq < 0 && eq2 > 0))
+            )
+            {
+                front_region[front_len] = *((wall *)(l_def));
+                front_len++;            
+            }
+            // fill left_
+            if( ((side) && (eq > 0 && eq2 > 0)))
+            {
+                front_region[front_len] = *((wall *)(l_def));
+                front_len++;
+            }
+            // fill right
+            if( (!side) && (eq < 0 && eq2 < 0) )
+            {
+                back_region[back_len] = *((wall *)(l_def));
+                back_len++;
+            }
+        }
+    }
+    // start whole bsp tree
+    // g_->scene.bsp_head = bsp_(g_, true, &(g_->scene._walls[g_->scene._walls_ix / 2]), g_->scene._walls, g_->scene._walls_ix);
+    //
+    printf("\033[31m ---- START ----> left[%d] \t right[%d] \t \033[36m \n", front_len, back_len);
     g_->scene.bsp_head = (node);
+    node->_partition = splitter;
+    node->_back = bsp_(g_, back_region, back_len);
+    node->_front = bsp_(g_, front_region, front_len);
+    printf("WALLAH %d %d \n", g_->scene._bsp_depth, g_->scene._walls_ix);
+    printBSP(g_->scene.bsp_head, 0);
 }
+
+
 
 static void multiThread_present(game_state *g_)
 {
