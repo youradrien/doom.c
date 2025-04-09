@@ -9,6 +9,23 @@ static inline v2 rotate_v2(v2 v, f32 a)
     };
 }
 
+
+
+static BSP_node *find_plyr_node(BSP_node* node, f32 px, f32 py)
+{
+    while (node->_front || node->_back)
+    {
+        float side = (node->_partition->b.x - node->_partition->a.x) * (py - node->_partition->a.y)
+                        -
+                     (node->_partition->b.y - node->_partition->a.y) * (px - node->_partition->a.x);
+
+        node = (side >= 0) ? node->_front : node->_back;
+    }
+    return node;
+}
+
+
+
 static void player_movement(game_state *g_)
 {
     SDL_Event event;
@@ -51,6 +68,12 @@ static void player_movement(game_state *g_)
                 g_->p.pos.y += 2.0f * d_y;
                 g_->p.pos.x += 2.0f * d_x;
                 // transform_world(g_);
+                //
+                if(g_->scene.bsp_head){
+                    BSP_node *n = find_plyr_node(g_->scene.bsp_head, g_->p.pos.x, g_->p.pos.y);
+                    g_->p._node = (n);
+                }
+
             }
             // a
             if(i == 0)
@@ -71,7 +94,7 @@ static void player_movement(game_state *g_)
 
 static inline void set_pixel_color(game_state *g_, int x, int y, int c)
 {
-    // prevents segfaults
+    // segfaults
     if(x < 0 || y < 0 || x > WINDOW_WIDTH || y > WINDOW_HEIGHT)
         return;
     const int ix = (WINDOW_WIDTH * y) + x;
@@ -173,7 +196,9 @@ static inline v2 intersect_segments(v2 a0, v2 a1, v2 b0, v2 b1) {
         ((a0.x - a1.x) * (b0.y - b1.y))
             - ((a0.y - a1.y) * (b0.x - b1.x));
 
-    if (fabsf(d) < 0.000001f) { return (v2) { NAN, NAN }; }
+    if (fabsf(d) < 0.000001f) { 
+        return (v2) { NAN, NAN }; 
+    }
 
     const f32
         t = (((a0.x - b0.x) * (b0.y - b1.y))
@@ -189,8 +214,9 @@ static inline v2 intersect_segments(v2 a0, v2 a1, v2 b0, v2 b1) {
 
 
 
-// convert angle to [-(FOV/2)...+(FOV/2)] => [x in 0..WINDOW_WIDTH] 
 
+
+// convert angle to [-(FOV/2)...+(FOV/2)] => [x in 0..WINDOW_WIDTH] 
 /*static inline int screen_angle_to_x(f32 angle) {
     return
         ((int) (SCREEN_WIDTH / 2))
@@ -219,18 +245,17 @@ static inline int screen_angle_to_x(game_state *g_, f32 angle)
         // );
 }
 
+
 // 2D COORDINATES (world space)
 // -> 3D COORDAINTES (camera space)
 static inline v2 world_to_camera(game_state *g_, v2 p)
 {
-    // 1. translate
-    
+    // translate
     const v2 t = (v2){
         p.x - g_->p.pos.x, 
         p.y - g_->p.pos.y
     };
-   
-    // 2. rotate
+    // rotate
     return (v2)
         {
             t.x * (sin(DEG2RAD(g_->p.rotation))) - t.y * (cos(DEG2RAD(g_->p.rotation))),
@@ -246,13 +271,7 @@ static inline f32 normalize_angle(f32 a)
     return a - (TAU * floor((a + M_PI) / TAU)); 
 }
 
-static f32 cross_product(v2 A, v2 B, v2 P) {
-    float dx = B.x - A.x;  // x-component of the wall direction
-    float dy = B.y - A.y;  // y-component of the wall direction
-    float px = P.x - A.x;  // x-component of the player direction
-    float py = P.y - A.y;  // y-component of the player direction
-    return dx * py - dy * px;
-}
+
 
 // 2D Coordinates to 3D
 // 3. Wall-Cliping (test if lines intersects with player viewcone/viewport by using vector2 cross product)
@@ -264,7 +283,6 @@ static void render(game_state *g_)
     for(uint32_t i = 0; i < g_->scene._walls_ix; i ++)
     {     
         const wall *l = &(g_->scene._walls[i]);
- 
         const v2
             zdr = rotate_v2((v2){ 0.0f, 1.0f}, + (HFOV / 2.0f)),
             zdl = rotate_v2((v2){ 0.0f, 1.0f}, - (HFOV / 2.0f)),
@@ -324,7 +342,6 @@ static void render(game_state *g_)
             v2 
                 left = intersect_segments(cp0, cp1, znl, zfl),
                 right = intersect_segments(cp0, cp1, znr, zfr);
-
             if((
                 !(ac0 > +(HFOV / 2) || ac1 < -(HFOV / 2))
             ) && (
@@ -335,16 +352,12 @@ static void render(game_state *g_)
                 // left = (right);
                 if(ac0 < -(HFOV/2))
                     //printf("SORTIE-GAUCHE \n");
-                if(ac1 > +(HFOV/2))
-                    //printf("SORTIE-DROITE \n");
                 */
             }else
             {
                 /*
                 if(ac0 > +(HFOV /2))
                     printf("SORTIE-GAUCHE \n");
-                if(ac1 < -(HFOV / 2))
-                    printf("SORTIE-DROITE \n");
                 */
             } 
 
@@ -382,7 +395,7 @@ static void render(game_state *g_)
             const f32 
                 h = l->_sector->floor,
                 p = l->_sector->ceil;
-            z_floor = (g_->p.height / 2) - (h);
+            z_floor = (g_->p.height / 1.2) - (h);
             z_ceiling = (p);
         }
         // impossible (floor above ceiling)
@@ -443,10 +456,8 @@ static void render(game_state *g_)
         d_line(g_, wx1, wy_b1, wx1, wy_t1, 0xFFFFFF); 
 
         // A-B rects
-        /*
         d_rect(g_, wx0 - 2, wy_t1 - 25, 4, 4, 0x00FFFF);
         d_rect(g_, wx1 - 2, wy_t1 - 25, 4, 4, 0x00FF00);
-        */
 
         // wall-filled
         // with verlines
@@ -463,19 +474,23 @@ static void render(game_state *g_)
                 y_a, 
             l->color);
         } 
-
         // todo:
         // texture-mapping
     }
 }
+
+
+
+
+
 
 static void add_wall(game_state *g_, int x1, int y1, int x2, int y2, sector *s, int color)
 {
     wall *l = &(g_->scene._walls[g_->scene._walls_ix]);
 
     if(x1 > WINDOW_WIDTH) x1 = (WINDOW_WIDTH - 1);
-    if(x1 < 0) x1 = 0;
-    if(x2 < 0) x2 = 0;
+    if(x1 < 0) x1 = 1;
+    if(x2 < 0) x2 = 1;
     if(x2 > WINDOW_HEIGHT) x2 = (WINDOW_HEIGHT - 1);
     l->a.x = x1;  
     l->a.y = y1;   
@@ -490,44 +505,36 @@ static void add_wall(game_state *g_, int x1, int y1, int x2, int y2, sector *s, 
     g_->scene._walls_ix++;
 }
 
-// [MINIMAP]
-static void render_2d_bsptree(BSP_node *h, game_state *g_, signed int x)
+
+
+
+
+
+
+static void draw_bsp(game_state *g_, BSP_node* root, int x, int y, int spacing, int depth)
 {
-    if(!h->_front && !h->_back)
+    if(!root)
+        return;
+    if(spacing < 7)
+        spacing = 7;
+
+    if(root->_back)
     {
-        return ;
+        d_line(g_, x, y, x - spacing, y + 10, 0xFFFFFF);
+        draw_bsp(g_, root->_back, x - spacing, y + 10, spacing / 1.5, depth + 1);
     }
-    if(h == g_->scene.bsp_head){
-        d_rect(g_,
-               WINDOW_WIDTH / 2, 
-               WINDOW_HEIGHT * 0.78f, //+ (g_->scene._ibsp * 10), 
-               5, 5, 0xFFFFFF);
-        render_2d_bsptree(h->_back, g_, -100);
-        render_2d_bsptree(h->_front, g_, 100);
+
+    if(root->_front)
+    {
+        d_line(g_, x, y, x + spacing, y + 10, 0xFFFFFF);
+        draw_bsp(g_, root->_front, x + spacing, y + 10, spacing / 1.5, depth + 1);
     }
+    if(root == g_->p._node)
+        d_rect(g_, x - 2, y - 2, 4, 4, 0xFF00FF);
     else
-    {
-        g_->scene._ibsp ++;
-        // left node
-        if(h->_back)
-        {
-            d_rect(g_,
-                   (WINDOW_WIDTH / 2 - 10) - (x),
-                   (int)((float)(WINDOW_HEIGHT) * 0.80f) + (g_->scene._ibsp * 10), 
-                   5, 5, 0xFFFFFF);
-            render_2d_bsptree(h->_back, g_, (signed int)(x - 10));
-        } 
-        // right node
-        if(h->_front)
-        {
-            d_rect(g_,
-                  (WINDOW_WIDTH / 2 + 10) + (x),
-                  (int)((float)(WINDOW_HEIGHT) * 0.80f) + (g_->scene._ibsp * 10), 
-                  5, 5, 0xFFFFFF); 
-            render_2d_bsptree(h->_front, g_, (signed int)(x + 10));
-        }
-    }
+        d_rect(g_, x - 2, y - 2, 4, 4, 0xFF0000);
 }
+// [MINIMAP]
 static void render_minimap(game_state *g_)
 {
     // grid
@@ -591,24 +598,26 @@ static void render_minimap(game_state *g_)
     if(g_->scene.bsp_head->_front 
         || g_->scene.bsp_head->_back)
     {
-        // render_2d_bsptree(g_->scene.bsp_head, g_, 0); 
-    }
+        draw_bsp(g_, g_->scene.bsp_head, WINDOW_WIDTH / 2, 450, 120, 0);
+    }   
 }
 
 
+
+
 // Recursive function to print the BSP tree
-void printBSP(BSP_node *node, int depth)
+static void printBSP(BSP_node *node, int depth)
 {
     if (!node) return;
 
     for (int i = 0; i < depth; i++)
-        printf("│   \033[31m");
+        printf("\033[34m│   ");
     if (node->_partition) {
-        printf("├── [NODE] Partition: (%.2f, %.2f) → (%.2f, %.2f)\n",
+        printf("├── \033[36m [NODE] Partition: [A](%.1f, %.1f) → [B](%.1f, %.1f) \n",
               (node->_partition)->a.x, (node->_partition)->a.y,
                 (node->_partition)->b.x, (node->_partition)->b.y);
     } else {
-        printf("└── [LEAF]\n");
+        printf("\033[35m └── [LEAF] \033[0m \n");
         return;
     }
 
@@ -616,6 +625,11 @@ void printBSP(BSP_node *node, int depth)
     printBSP(node->_front, depth + 1);
     printBSP(node->_back, depth + 1);
 }
+
+
+
+
+
 
 // txt to data
 static void parse_txt(game_state *g_, const char *f)
@@ -652,7 +666,6 @@ static void parse_txt(game_state *g_, const char *f)
             line[read_n] = '\0';
             // reached end of file
             if(stored_n >= bytes){
-                //printf("RRR %d \n", bytes);
                 break;
             }
             // vertices
@@ -664,10 +677,8 @@ static void parse_txt(game_state *g_, const char *f)
                 { 
                     line[read_n] = '\0';
                     if(y == -1){
-                        // printf("+y: %s \n", line);
                         y = atof(line); 
                     }else{
-                        // printf("+x: %s %f%f\n", line, g_->scene._verts[0].x, g_->scene._verts[0].y);
                         const float x = atof(line); 
                         const uint32_t c = g_->scene._verts_count;
                         g_->scene._verts = (v2 *)realloc(g_->scene._verts, sizeof(v2) * (c + 1));
@@ -698,7 +709,6 @@ static void parse_txt(game_state *g_, const char *f)
                 g_->scene._sectors[k].portals = (sector **)calloc(sizeof(sector *), 1);
                 // g_->scene._sectors[k].vertices = (v2 **)calloc(sizeof(v2 *), 1);
                 g_->scene._sectors[k].n_vertices = 0;
-                // printf("\n");
                 while(sscanf(bfr + stored_n, "%50s%n", v_line, &read_n) && stored_n < read_len) 
                 { 
                     v_line[read_n] = '\0';
@@ -709,11 +719,8 @@ static void parse_txt(game_state *g_, const char *f)
                         g_->scene._sectors[k].ceil = (float)(atoi(v_line));
                     }else
                     {
-                        
-                 
                         if(!b) // load vertices pointers
                         {
-                            // printf("L:%s", v_line);
                             const int 
                                 v_ = g_->scene._sectors[k].n_vertices,
                                 ix = atoi(v_line);
@@ -731,8 +738,7 @@ static void parse_txt(game_state *g_, const char *f)
                                 g_->scene._sectors[k].n_vertices = (v_ + 1);
                               
                             }
-                        }else{ // load neighbors
-                            
+                        }else{ // load neighbors    
                             const int a = atoi(v_line);
                             if(!(a > g_->scene._sectors_count))
                             {
@@ -769,16 +775,18 @@ static void parse_txt(game_state *g_, const char *f)
             }
         }
     }
-
     close(fd);
     printf("\033\[32m Successfully loaded map: %s   [%d vertices, %d sectors]...\033\[33m \n", f, g_->scene._verts_count, g_->scene._sectors_count);
 }
 
-static void scale_map(game_state *g_)
+
+
+
+
+static void sector_to_walls(game_state *g_)
 {
     int x_max = INT_MIN, y_max = INT_MIN;
     int x_min = INT_MAX, y_min = INT_MAX;
-
     for(uint32_t i = 0; i < g_->scene._verts_count; i++)
     {
         if(g_->scene._verts[i].x > x_max)
@@ -795,25 +803,7 @@ static void scale_map(game_state *g_)
     {
         g_->scene._verts[i].x *= MAP_TILE;
         g_->scene._verts[i].y *= MAP_TILE;
-    }
-
-    if(MAP_TILE * (x_max - x_min) < WINDOW_WIDTH)
-    {
-        const f32
-            w = (WINDOW_WIDTH / 2) - (MAP_TILE * ((x_max - x_min) / 2)),
-            h = (WINDOW_HEIGHT / 2) - (MAP_TILE * ((y_max - y_min) / 2));
-        const bool
-            c = (MAP_TILE * (y_max - y_min) < WINDOW_HEIGHT);
-        for(uint32_t i = 0; i < g_->scene._verts_count; i++)
-        {
-            g_->scene._verts[i].x += w;
-            g_->scene._verts[i].y += c ? (h) : (100);
-        }
-    }
-}
-static void sector_to_walls(game_state *g_)
-{
-    for(uint32_t i = 0; i < g_->scene._sectors_count; i++)
+    }    for(uint32_t i = 0; i < g_->scene._sectors_count; i++)
     {
         if(g_->scene._sectors[i].n_vertices < 2)
             continue;
@@ -845,6 +835,11 @@ static void sector_to_walls(game_state *g_)
         }
     } 
 }
+
+
+
+
+
 
 // detect nearest wall from a wall (below or before, depends on side)
 static wall *heuristic_bsp(const game_state *g_, wall *tracked_wall, wall *_region, unsigned int _region_len)
@@ -906,9 +901,9 @@ static wall *heuristic_bsp(const game_state *g_, wall *tracked_wall, wall *_regi
                 scores[1]++;
             }else{
                 // if linedef lies exactly on partition (D = 0), assign it to front
-                //if(j_eq[0] == 0 && j_eq[1] == 0)
-                //    scores[0]++;
-                //else
+                if(j_eq[0] == 0 && j_eq[1] == 0)
+                    scores[0]++;
+                else
                     scores[2]++;
             }
         } 
@@ -917,7 +912,6 @@ static wall *heuristic_bsp(const game_state *g_, wall *tracked_wall, wall *_regi
             ) + 
             (scores[2] * 8)
         );
-        //printf("wall=%d \t score: %d \n", i, score);
         // linedef with the fewest splits and most balanced partitioning is chosen.
         if(score < s_score)
         {
@@ -927,7 +921,6 @@ static wall *heuristic_bsp(const game_state *g_, wall *tracked_wall, wall *_regi
         // If multiple linedefs have the same split count, prefer the one closest to the center of the map.i
         if(score == s_score){ }
     }
-    // printf("ça score : %d \n", se);
     return (selected_wall);
 }
 
@@ -947,20 +940,18 @@ static BSP_node *bsp_(game_state *g_, wall *_region, unsigned int _region_size)
     if(_region_size < 1){
         return (node); 
     }
-
     // allocate new region
     wall 
         *front_region = (wall *)malloc(sizeof(wall) * (_region_size)),
         *back_region = (wall *)malloc(sizeof(wall) * (_region_size));
 
     wall *_W = &(_region[0]);
-    //wall *_W = (heuristic_bsp(g_, , _region, _region_size));
+    // wall *_W = (heuristic_bsp(g_, , _region, _region_size));
     if(!front_region || !back_region)
         return (NULL);
     int
         front_len = 0,
-        back_len = 0,
-        colinears = 0; 
+        back_len = 0;
     // attribute [left/right] new splitted regions
     for(uint32_t i = 0; i < _region_size; i ++)
     {
@@ -1005,11 +996,8 @@ static BSP_node *bsp_(game_state *g_, wall *_region, unsigned int _region_size)
                 front_region[front_len] = *((wall *)(l_def));
                 front_len++;
             }
-            colinears++;
         }
     }
-    printf("[%d](%d) --> left[%d] \t right[%d]   col[%d]\t \n",g_->scene._bsp_depth, _region_size, front_len, back_len, colinears);
-
     node->_partition = (_W);
     if(!_W || g_->scene._bsp_depth > 400){
         return (node);
@@ -1043,7 +1031,6 @@ static void scene(game_state *g_)
     g_->scene._verts_count = 1;
     g_->scene._sectors_count = 1;
     parse_txt(g_, "maps/bruh.txt"); 
-    scale_map(g_);
     sector_to_walls(g_);
     // INIT SPLITTED REGIONS
     // ---------------------
@@ -1058,55 +1045,57 @@ static void scene(game_state *g_)
     int
         front_len = 0,
         back_len = 0; 
-    // attribute [left/right] new splitted regions
-    for(int z = 0; z < 2; z++)
+    // initliaze whole left/right] new splitted regions
+    for(uint32_t i = 0; i < g_->scene._walls_ix; i ++)
     {
-        bool side = (z == 0);
-        for(uint32_t i = 0; i < g_->scene._walls_ix; i ++)
+        const wall * 
+            l_def = &(g_->scene._walls[i]);
+        if(l_def == splitter) // ofc bro
+            continue;
+        wall *A = (splitter);
+        wall *B = (wall *) (l_def);
+        // Compute direction vector of A
+        const v2 
+            dir_A = { A->b.x - A->a.x, A->b.y - A->a.y },
+            normal_A = { -dir_A.y, dir_A.x },
+            vec_AB = { B->a.x - A->a.x, B->a.y - A->a.y };
+        
+        // Compute dot product of vec_AB with normal_A
+        float dot = vec_AB.x * normal_A.x + vec_AB.y * normal_A.y;
+        
+        // fill front_
+        if(dot > 0.0f)
         {
-            const wall * 
-                l_def = &(g_->scene._walls[i]);
-            if(l_def == splitter) // ofc bro
-                continue;
-            const f32 
-                eq = (l_def->a.x - splitter->a.x) * (splitter->b.y - splitter->a.y) -
-                    (l_def->a.y - splitter->a.y) * (splitter->b.x - splitter->a.x),
-                eq2 = (l_def->b.x - splitter->a.x) * (splitter->b.y - splitter->a.y) -
-                    (l_def->b.y - splitter->a.y) * (splitter->b.x - splitter->a.x);
-            // fill splits
-            if((side) && (
-                (eq > 0 && eq2 < 0) 
-                || (eq < 0 && eq2 > 0))
-            )
-            {
-                front_region[front_len] = *((wall *)(l_def));
-                front_len++;            
-            }
-            // fill left_
-            if( ((side) && (eq > 0 && eq2 > 0)))
-            {
-                front_region[front_len] = *((wall *)(l_def));
-                front_len++;
-            }
-            // fill right
-            if( (!side) && (eq < 0 && eq2 < 0) )
+            front_region[front_len] = *((wall *)(l_def));
+            front_len++;
+        }
+        // fill back_
+        if (dot < 0.0f) 
+        {
+            back_region[back_len] = *((wall *)(l_def));
+            back_len++;
+        }
+        //handle colinears
+        if ( dot == 0.0f)
+        {
+            if(i % 2 == 0)
             {
                 back_region[back_len] = *((wall *)(l_def));
-                back_len++;
+                back_len++;            
+            }else{
+                front_region[front_len] = *((wall *)(l_def));
+                front_len++;
             }
         }
     }
     // start whole bsp tree
-    // g_->scene.bsp_head = bsp_(g_, true, &(g_->scene._walls[g_->scene._walls_ix / 2]), g_->scene._walls, g_->scene._walls_ix);
-    //
-    printf("\033[31m ---- START ----> left[%d] \t right[%d] \t \033[36m \n", front_len, back_len);
     g_->scene.bsp_head = (node);
     node->_partition = splitter;
     node->_back = bsp_(g_, back_region, back_len);
     node->_front = bsp_(g_, front_region, front_len);
-    printf("WALLAH %d %d \n", g_->scene._bsp_depth, g_->scene._walls_ix);
     printBSP(g_->scene.bsp_head, 0);
 }
+
 
 
 
@@ -1143,6 +1132,7 @@ static void multiThread_present(game_state *g_)
 }
 
 
+
 static void destroy_window(game_state *g_)
 {
     SDL_DestroyTexture(g_->texture);
@@ -1155,6 +1145,8 @@ static void destroy_window(game_state *g_)
     free(g_);
     return;
 }
+
+
 
 int init_doom(game_state **g_)
 {  
@@ -1233,6 +1225,9 @@ int init_doom(game_state **g_)
     (*g_)->render_mode = false;
     return 0;
 }
+
+
+
 
 static void update(game_state *g_)
 {

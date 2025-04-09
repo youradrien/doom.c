@@ -66,13 +66,6 @@ typedef struct v2_s
     f32 y;
 } v2;
 
-typedef	struct s_player
-{ 
-    v2	pos;
-    f32	rotation;
-    f32	height;
-} player;
-
 typedef struct s_sector s_sector;
 typedef struct s_sector
 {
@@ -106,7 +99,13 @@ typedef struct	t_BSP_node
     wall    *_partition;
 }   BSP_node;
 
-
+typedef	struct s_player
+{ 
+    v2	pos;
+    f32	rotation;
+    f32	height;
+    BSP_node *_node;
+} player;
 
 typedef struct s_scene
 {
