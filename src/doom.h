@@ -33,7 +33,7 @@
 // horizontal fov
 #define HFOV DEG2RAD(90.0f)
 // vertical fov
-#define VFOV 0.8f
+#define VFOV 0.7f
 
 #define ZNEAR 0.0001f
 #define ZFAR  620.0f
@@ -58,19 +58,26 @@
    ({ __typeof__ (a) _a = (a); \
        __typeof__ (b) _b = (b); \
      _a < _b ? _a : _b; })
-typedef float f32;
 
+
+typedef float f32;
 typedef struct v2_s
 {
     f32 x;
     f32 y;
 } v2;
 
+
 typedef struct s_sector s_sector;
+typedef struct s_wall s_wall;
+
 typedef struct s_sector
 {
     v2		*vertices[100];
     uint16_t	n_vertices;
+
+    s_wall	*walls[256];
+    uint32_t	n_walls;
 
     f32		floor;
     f32		ceil;
@@ -79,15 +86,15 @@ typedef struct s_sector
     uint16_t	n_portals;
 }   sector;
 
-
-// "LINEDEFS"
+//  [walls | linedefs]
 typedef struct s_wall
 { 
-    v2	a;
-    v2	b;
-    sector  *_sector;
+    // ptrs to vertices
+    v2	*a;
+    v2	*b;
+
     sector  *_op_sect;
-    uint32_t color;
+    sector  *_sector;
     bool    _in_bsp;
 } wall;
 
@@ -104,12 +111,23 @@ typedef	struct s_player
     v2	pos;
     f32	rotation;
     f32	height;
+    
+
     BSP_node *_node;
+    sector *_sect;
 } player;
 
+
+
+// "QUEUE" of sectors
+#define MAX_QUEUE 128
+#define MAX_SECTORS 512
+typedef struct {
+    sector *s;
+} queue_entry;
 typedef struct s_scene
 {
-    // walls
+    // walls (linedefs) 
     wall *_walls;
     int	 _walls_ix;
 
@@ -124,19 +142,15 @@ typedef struct s_scene
     // bsp tree
     BSP_node	*bsp_head;
     unsigned int _bsp_depth;
-    int		_ibsp;
-    wall	*left_region[300];
-    wall	*right_region[300];
-    int		l_region_i, r_region_i;
-    int		_draw_bspleft;
-    int		_draw_bspright;
-    
 
-    // light	*_sun;
+    // rendering queue 
+    queue_entry _queue[MAX_QUEUE];
+    char visited[MAX_SECTORS]; // per-sector visited flag
 }   t_scene;
 
 
-// Structure of the whole Game State
+
+// structure of the whole Game State
 typedef struct s_game_state
 {
     // SDL specifics
@@ -147,6 +161,8 @@ typedef struct s_game_state
 
     bool render_mode;
     bool quit;
+
+    // whole scene
     t_scene scene;
 
     float deltaTime;
