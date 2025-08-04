@@ -15,6 +15,7 @@
 #include <unistd.h> 
 #include <fcntl.h>
 #include <limits.h>
+#include <float.h>
 
 #define ASSERT(_e, ...) if (!(_e)) { fprintf(stderr, __VA_ARGS__); exit(1); }
 
@@ -29,7 +30,7 @@
 // eye-height of the player
 // (he'll be able to crouch)
 #define EYE_Z 1.65f
-#define FOV 90
+#define FOV 60
 // horizontal fov
 #define HFOV DEG2RAD(90.0f)
 // vertical fov
@@ -111,10 +112,15 @@ typedef	struct s_player
     v2	pos;
     f32	rotation;
     f32	height;
+    f32 y_pos;
     
-
+    // map-positions
     BSP_node *_node;
     sector *_sect;
+
+    // standings
+    bool _crouch;
+    bool _crawl;
 } player;
 
 

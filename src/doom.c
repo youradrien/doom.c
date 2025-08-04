@@ -26,14 +26,32 @@ static void player_movement(game_state *g_)
             }
             if(event.key.keysym.sym == SDLK_ESCAPE)
 	        g_->quit = true;
-           if(event.key.keysym.sym == SDLK_m)
+            if(event.key.keysym.sym == SDLK_m)
 	        g_->render_mode = !(g_->render_mode);
+            
+            //modifiers (Ctrl, Shift)
+            SDL_Keymod d_mods = SDL_GetModState();
+            if (d_mods & KMOD_CTRL) {
+                g_->p._crawl = true;
+            }
+            if (d_mods & KMOD_SHIFT) {
+                g_->p._crouch = true;
+            }
             break;
         case SDL_KEYUP:
             if(event.key.keysym.sym >= 'a' && event.key.keysym.sym <= 'z')
             {
                 g_->pressed_keys[event.key.keysym.sym - 'a'] = 0; 
-            }           
+            }
+            //modifiers (Ctrl, Shift)
+            SDL_Keymod mods = SDL_GetModState();
+            if (mods & KMOD_CTRL) {
+                g_->p._crawl = false;
+            }
+            if (mods & KMOD_SHIFT) {
+                g_->p._crouch = false;
+            }
+
             break;
     } 
     for(short int i = 0; i < 26; i ++)
@@ -55,10 +73,10 @@ static void player_movement(game_state *g_)
             }
             // a
             if(i == 0)
-                g_->p.rotation -= 1;
+                g_->p.rotation -= 1.75f;
             // e
             if(i == 4)
-                g_->p.rotation += 1;
+                g_->p.rotation += 1.75f;
         }
     } 
     if(g_->p.pos.x < 0) g_->p.pos.x = 0;
@@ -67,24 +85,30 @@ static void player_movement(game_state *g_)
     if(g_->p.pos.y >= (float)(WINDOW_HEIGHT - 6)) g_->p.pos.y = WINDOW_HEIGHT - 6.0f;
     if(g_->p.rotation > 360.0f) g_->p.rotation = 0.0f;
     if(g_->p.rotation < -360.0f) g_->p.rotation = 0.0f;
+    if(g_->p._crawl)
+        g_->p.height = 0;
+    if (g_->p._crouch)
+        g_->p.height = 4;
 }
 
 static void player_sector_pos(game_state *g_)
 {
     // each sect
-    f32 last_area = 100000000.0f;
+    f32 last_area = FLT_MAX;
+
     for(uint32_t i = 0; i < g_->scene._sectors_count; i++)
     {
         sector *s = &g_->scene._sectors[i];
         uint32_t crossingz = 0;
         f32 area = 0.0f;
-        if(s->n_vertices < 2)
+        if(s->n_vertices < 2 
+            || !(s->floor <= g_->p.y_pos && g_->p.y_pos <= s->ceil) )
             continue;
-        for(uint32_t j = 0; j < s->n_vertices - 1; j++)
+        for(uint32_t j = 0; j < s->n_vertices; j++)
         {
             v2 
                 *a = s->vertices[j], 
-                *b = s->vertices[j + 1];
+                *b = j == s->n_vertices - 1 ? s->vertices[0] : s->vertices[j + 1];
             area += (a->x * b->y) - (b->x * a->y);
             if((a->y > g_->p.pos.y) != (b->y > g_->p.pos.y)
                 && (g_->p.pos.x < (b->x - a->x) * (g_->p.pos.y - a->y) / (b->y - a->y) + a->x ))
@@ -313,18 +337,16 @@ static void render_doomnukem(game_state *g_)
         // sector rendering logic:
         // (push a sector in -> queue if he has any portal)
         // render sector
-        for(uint64_t i = 0; i < curr_sect->n_vertices; i++)
+        for(uint64_t i = 0; i < curr_sect->n_walls; i++)
         {
-            if(!&curr_sect->vertices[i])
+            /*if(!&curr_sect->vertices[i])
                 continue ;
-            wall w = (i == curr_sect->n_vertices - 1) ? ((wall){
-                curr_sect->vertices[0],
-                curr_sect->vertices[curr_sect->n_vertices - 1]
-            }) : ((wall){
+            wall w = ((wall){
                 curr_sect->vertices[i],
-                curr_sect->vertices[i + 1]
+                (i == curr_sect->n_vertices - 1) 
+                    ? curr_sect->vertices[i + 1] : curr_sect->vertices[0]
             });
-            w = g_->scene._walls[0];
+            w = g_->scene._walls[0];*/
             
 
             const wall 
@@ -332,7 +354,7 @@ static void render_doomnukem(game_state *g_)
                         i
                         (g_->scene._w_queue[i])
                     ]) */
-                    &(w)
+                    (curr_sect->walls[i])
                 ;
             const v2
                 zdr = rotate_v2((v2){ 0.0f, 1.0f}, + (HFOV / 2.0f)),
@@ -352,7 +374,7 @@ static void render_doomnukem(game_state *g_)
 
             // both are behind player -> wall behind camera
             if(cp0.y <= 0 && cp1.y <= 0){
-                return ;
+                continue;
             }
 
             // angle-clip against view frustum
@@ -378,7 +400,7 @@ static void render_doomnukem(game_state *g_)
             }
             if(cross == 0.0f)
             {
-                return ;
+                continue ;
             }       
             // clip against frustum (if wall intersects with clip planes)
             if(  
@@ -402,7 +424,7 @@ static void render_doomnukem(game_state *g_)
                     //printf("SORTIE-GAUCHE \n");
                 }else
                 {
-                    //printf("SORTIE-GAUCHE \n");
+                    //printf("SORTIE-DROITE \n");
                 } 
 
                 // if we define dx=x2-x1 and dy=y2-y1, 
@@ -428,17 +450,16 @@ static void render_doomnukem(game_state *g_)
                 || (ac1 < ac0 && (!below_))
             )
             {
-                return;
+               continue;
             }
             // wall attributes
-            const 
-                f32 z_floor = 0.0f; //(curr_sect->floor) + g_->p.height / 2;
-            const
-                f32 z_ceiling = 20.0f;// (curr_sect->ceil) + g_->p.height / 2; 
+            f32 
+                z_floor = curr_sect->floor + 5.0f,// + (g_->p.height), //(curr_sect->floor) + g_->p.height / 2;
+                z_ceiling = curr_sect->ceil;// - (g_->p.height);// (curr_sect->ceil) + g_->p.height / 2; 
 
             // impossible (floor above ceiling)
             if(z_floor >= z_ceiling){
-                return;
+                continue;
             }
 
             // ignore far -HFOV/2..+HFOV/2
@@ -446,7 +467,7 @@ static void render_doomnukem(game_state *g_)
             if( (ac0 < -(HFOV / 2.0f) && ac1 < -(HFOV / 2.0f))
                 || (ac0 > +(HFOV / 2.0f) && ac1 > +(HFOV/ 2.0f)) 
             ){
-                return ;
+                continue;
             }
             // wall y-scale
             const f32 
@@ -494,7 +515,7 @@ static void render_doomnukem(game_state *g_)
                         s ? (i) : (x2 + (x1 - i)), 
                         y_b + 1,
                         y_a,
-                        0xBBBBBB
+                        !l->_op_sect ? 0x0000AA : 0xBBBBBB
                     );
                 }
             //}
@@ -562,7 +583,7 @@ static void render_minimap(game_state *g_)
         d_line(g_, g_->p.pos.x + 2, g_->p.pos.y - 2,  
             g_->p.pos.x + (200.0f * cos(DEG2RAD((float)((g_->p.rotation - (FOV / 2)) + i)))),
             g_->p.pos.y + (200.0f * sin(DEG2RAD((float)((g_->p.rotation - (FOV/2)) + i)))),
-            0x666666
+            0x333333
         );        
     }
     d_line(g_, g_->p.pos.x, g_->p.pos.y, 
@@ -575,22 +596,34 @@ static void render_minimap(game_state *g_)
     // sectors
     if(g_->scene._sectors_count > 1)
     {
-        for(uint32_t i = 0; i < g_->scene._sectors_count; i++)
+        for(int zz = 0; zz < 2; zz++)
         {
-            if(g_->scene._sectors[i].n_vertices <= 1)
-                continue;
-            for(uint32_t j = 0; j < g_->scene._sectors[i].n_vertices ; j ++)
-            { 
-                const v2
-                    *a = g_->scene._sectors[i].vertices[j],
-                    *b = g_->scene._sectors[i].vertices[
-                        (j == g_->scene._sectors[i].n_vertices - 1) ? (0) : (j + 1)
-                    ];
-                d_line(g_, (int)(a->x), (int)(a->y), (int)(b->x), (int)(b->y),
-                       (&g_->scene._sectors[i] == g_->p._sect) ? 0xFF0000 :  0xFFFFFF);
-            } 
+            for(uint32_t i = 0; i < g_->scene._walls_ix; i++)
+            {
+                wall *l = &(g_->scene._walls[i]);
+                /* if(g_->scene._sectors[i].n_vertices <= 1)
+                    continue;
+                for(uint32_t j = 0; j < g_->scene._sectors[i].n_vertices ; j ++)
+                { */ 
+                    const v2
+                        *a = l->a,//g_->scene._sectors[i].vertices[j],
+                        *b = l->b;// g_->scene._sectors[i].vertices[
+                          //  (j == g_->scene._sectors[i].n_vertices - 1) ? (0) : (j + 1)
+                        //];
+                    if(zz == 1 && ( l->_sector/* &g_->scene._sectors[i] */ == g_->p._sect))
+                    {
+                        d_line(g_, (int)(a->x), (int)(a->y), (int)(b->x), (int)(b->y),
+                            (!l->_op_sect) ? 0x0000FF : 0xFFFF00);
+                    }else if (zz == 0)
+                    {
+                        d_line(g_, (int)(a->x), (int)(a->y), (int)(b->x), (int)(b->y),
+                            (!l->_op_sect) ? 0x888888 : 0xFFFFFF);
+                    }
+                /* } */
+            }
         }
     }
+
     // vertices
     if(g_->scene._verts_count > 1)
     {
@@ -598,10 +631,15 @@ static void render_minimap(game_state *g_)
         {
             const v2 a = g_->scene._verts[i];
             const int T = 4;
-            d_line(g_, (int)(a.x - T), (int)(a.y - T), (int)(a.x + T), (int)(a.y - T), 0x00FF00);
-            d_line(g_, (int)(a.x - T), (int)(a.y + T), (int)(a.x + T), (int)(a.y + T), 0x00FF00);
-            d_line(g_, (int)(a.x - T), (int)(a.y - T), (int)(a.x - T), (int)(a.y + T), 0x00FF00);
-            d_line(g_, (int)(a.x + T), (int)(a.y - T), (int)(a.x + T), (int)(a.y + T), 0x00FF00); 
+            int color = 0x00FF00;
+            /* for(uint32_t i = 0; i < g_->p._sect->n_vertices; i ++)
+                if(g_->p._sect->vertices[i] == &g_->scene._verts[i])
+                    color = 0xFFFF00;
+            */
+            d_line(g_, (int)(a.x - T), (int)(a.y - T), (int)(a.x + T), (int)(a.y - T), color);
+            d_line(g_, (int)(a.x - T), (int)(a.y + T), (int)(a.x + T), (int)(a.y + T), color);
+            d_line(g_, (int)(a.x - T), (int)(a.y - T), (int)(a.x - T), (int)(a.y + T), color);
+            d_line(g_, (int)(a.x + T), (int)(a.y - T), (int)(a.x + T), (int)(a.y + T), color); 
         }
     }
 
@@ -781,7 +819,6 @@ static void parse_txt(game_state *g_, const char *f)
     close(fd);
     printf("\033\[32mSUCCESS LOADING '%s'  [%d vertices, %d sectors].\033\[33m \n", f, g_->scene._verts_count, g_->scene._sectors_count);
     // re attriubte correctly to g_-> game_state struct
-    // -> sector_to_walls(g_);
     for(uint32_t i = 0; i < g_->scene._verts_count; i++)
     {
         g_->scene._verts[i].x *= MAP_TILE;
@@ -817,7 +854,11 @@ static void parse_txt(game_state *g_, const char *f)
             l->b = (b);
             l->_sector = (sector *)(s);
             l->_op_sect = (sector *)(op_s);
-            g_->scene._walls_ix++;        
+            // sector wall
+            g_->scene._sectors[i].walls[g_->scene._sectors[i].n_walls] = (l);
+
+            g_->scene._walls_ix++;
+            g_->scene._sectors[i].n_walls++;
         }
         printf("\n");
     } 
@@ -1140,7 +1181,8 @@ static int init_doom(game_state **g_)
     (*g_)->p.pos.x = WINDOW_WIDTH / 3;
     (*g_)->p.pos.y = WINDOW_HEIGHT / 3;
     (*g_)->p.rotation = 0;
-    (*g_)->p.height = 10.0f;
+    (*g_)->p.height = 7.0f;
+    (*g_)->p.y_pos = 0.0f;
     (*g_)->render_mode = false;
     (*g_)->scene._walls = (wall *) malloc(400 * sizeof(wall));
     if (!(*g_)->scene._walls)
@@ -1157,7 +1199,29 @@ static int init_doom(game_state **g_)
         return (-1);
     (*g_)->scene._verts_count = 1;
     (*g_)->scene._sectors_count = 1;
-    printf("Initialization successful. \n");
+
+    size_t total = 0;
+
+    // static structs
+    total += sizeof(game_state);
+    total += sizeof(t_scene);  // g_->scene is embedded
+    total += sizeof(player);   // g_->p is embedded
+    // dynamically allocated fields
+    total += (*g_)->scene._verts_count * sizeof(v2);
+    total += (*g_)->scene._walls_ix * sizeof(wall);
+    total += (*g_)->scene._sectors_count * sizeof(sector);
+    total += sizeof((*g_)->scene._queue);   // Static array of queue_entry
+    total += sizeof((*g_)->scene.visited);  // Static array of char
+
+    // scene sectors: count portals if malloc'ed
+    for (uint32_t i = 0; i < (*g_)->scene._sectors_count; i++) {
+        total += (*g_)->scene._sectors[i].n_portals * sizeof(sector *);
+    }
+
+    // rendering-buffer
+    total += sizeof(uint32_t) * (WINDOW_WIDTH * WINDOW_HEIGHT /* your screen resolution */);
+
+    printf("\033[32mSUCCESS init game_state (approx): %zu bytes (%.2f KB)\n", total, total / 1024.0);
     return 0;
 }
 
@@ -1233,7 +1297,7 @@ int main(int argc, char **argv)
     parse_txt(g_, "maps/bruh.txt"); 
     init_bsp(g_);
 
-    printf("\033[32m DOOM RUNNING [%dx%d] \033[0m \n", WINDOW_WIDTH, WINDOW_HEIGHT);
+    printf("\033[32mDOOM RUNNING [%dx%d] \033[0m \n", WINDOW_WIDTH, WINDOW_HEIGHT);
 
     // [game loop]
     while(!(g_->quit))
