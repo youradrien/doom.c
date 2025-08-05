@@ -74,7 +74,7 @@ typedef struct s_wall s_wall;
 
 typedef struct s_sector
 {
-    v2		*vertices[100];
+    v2		*vertices[256];
     uint16_t	n_vertices;
 
     s_wall	*walls[256];

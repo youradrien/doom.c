@@ -99,6 +99,10 @@ static void player_sector_pos(game_state *g_)
     for(uint32_t i = 0; i < g_->scene._sectors_count; i++)
     {
         sector *s = &g_->scene._sectors[i];
+        if (!s || !s->vertices[0]
+            || s->n_vertices <= 0 
+            || s->n_vertices > 512)
+            continue;
         uint32_t crossingz = 0;
         f32 area = 0.0f;
         if(s->n_vertices < 2 
@@ -109,6 +113,8 @@ static void player_sector_pos(game_state *g_)
             v2 
                 *a = s->vertices[j], 
                 *b = j == s->n_vertices - 1 ? s->vertices[0] : s->vertices[j + 1];
+            if(!a || !b)
+                continue;
             area += (a->x * b->y) - (b->x * a->y);
             if((a->y > g_->p.pos.y) != (b->y > g_->p.pos.y)
                 && (g_->p.pos.x < (b->x - a->x) * (g_->p.pos.y - a->y) / (b->y - a->y) + a->x ))
@@ -137,6 +143,10 @@ static inline void set_pixel_color(game_state *g_, int x, int y, int c)
     if(x > WINDOW_WIDTH || y > WINDOW_HEIGHT || y < 0)
         return;
     const int ix = (WINDOW_WIDTH * y) + x;
+    if (ix >= WINDOW_WIDTH * WINDOW_HEIGHT || ix < 0){
+        // fprintf(stderr, "OOB pixel access at (%d,%d) -> ix=%d\n", x, y, ix);
+        return ;
+    }
     g_->buffer[ix] = (c);
 }
 
@@ -454,7 +464,7 @@ static void render_doomnukem(game_state *g_)
             }
             // wall attributes
             f32 
-                z_floor = curr_sect->floor + 5.0f,// + (g_->p.height), //(curr_sect->floor) + g_->p.height / 2;
+                z_floor = curr_sect->floor + (g_->p.height), //(curr_sect->floor) + g_->p.height / 2;
                 z_ceiling = curr_sect->ceil;// - (g_->p.height);// (curr_sect->ceil) + g_->p.height / 2; 
 
             // impossible (floor above ceiling)
@@ -484,7 +494,7 @@ static void render_doomnukem(game_state *g_)
                             screen_angle_to_x(g_, ac1)
                         );
             // wall y's
-            const int 
+            const int // (inverted wy_b's and wy_top's)
                    wy_b0 = (WINDOW_HEIGHT / 2) + (int) (z_floor * sy0),
                    wy_b1 = (WINDOW_HEIGHT / 2) + (int) (z_floor * sy1),
                    wy_t0 = (WINDOW_HEIGHT / 2) - (int) (z_ceiling * sy0),
@@ -500,25 +510,55 @@ static void render_doomnukem(game_state *g_)
             if (x2 <= x1) 
                 return; 
 
-            // check if linedef-portal
-            //if(!w->_op_sect)
-            //{
-                // fill wall with verlines
+            // portal ?
+            if(!l->_op_sect) // non-portal
+            {
+                // wall with verlines
                 for(uint16_t i = x1 + 0; i < x2; i++)
                 {
                     const int 
                         y_a = wy_b0 + (wy_b1 - wy_b0) 
-                            * (s ? (i - x1) : (i - x1)) / (x2 - x1),
+                            * (i - x1) / (x2 - x1),
                         y_b = wy_t0 + (wy_t1 - wy_t0) 
-                            * (s ? (i - x1) : (i - x1)) / (x2 - x1);
+                            * (i - x1) / (x2 - x1);
                     vert_line(g_, 
                         s ? (i) : (x2 + (x1 - i)), 
                         y_b + 1,
                         y_a,
-                        !l->_op_sect ? 0x0000AA : 0xBBBBBB
+                        l->_op_sect ? 0x0000AA : 0xBBBBBB
                     );
                 }
-            //}
+            }else // portal
+            {
+                // top wall
+                if(l->_op_sect->ceil < curr_sect->ceil)
+                {
+
+                }
+                // bottom wall
+                if(l->_op_sect->floor > curr_sect->floor)
+                {
+                    // wall y's
+                    const int
+                            wy_t0 = WINDOW_HEIGHT / 2 - 300,
+                            wy_t1 = WINDOW_HEIGHT / 2 - 300;                    
+                    // wall with verlines
+                    for(uint16_t i = x1 + 0; i < x2; i++)
+                    {
+                        const int 
+                            y_a = wy_b0 + (wy_b1 - wy_b0) 
+                                * (i - x1) / (x2 - x1),
+                            y_b = wy_t0 + (wy_t1 - wy_t0) 
+                                * (i - x1) / (x2 - x1);
+                        vert_line(g_, 
+                            s ? (i) : (x2 + (x1 - i)), 
+                            y_b + 1,
+                            y_a,
+                            0x0000AA                        
+                        );
+                    }
+                }
+            }
             // wall-outines
             // bottom-top-left-right
             d_line(g_, wx0, wy_b0, wx1, wy_b1, 0xFFFFFF);
@@ -569,16 +609,16 @@ static void draw_bsp(game_state *g_, BSP_node* root, int x, int y, int spacing, 
 static void render_minimap(game_state *g_)
 {
     // grid
-    for(uint32_t i = 0; i < WINDOW_WIDTH -1; i += MAP_TILE)
+    for(uint16_t i = 0; i < WINDOW_WIDTH -1; i += MAP_TILE)
     {
         d_line(g_, i, 0, i, WINDOW_HEIGHT, 0x005500);
-        for(uint32_t j = 0; j < WINDOW_HEIGHT; j += MAP_TILE)
+        for(uint16_t j = 0; j < WINDOW_HEIGHT; j += MAP_TILE)
         {
             d_line(g_, i, j, WINDOW_WIDTH, j, 0x005500);
         }
     }
     // player square and line 
-    for(uint32_t i = 0; i < FOV; i ++)
+    for(uint16_t i = 0; i < FOV; i ++)
     {
         d_line(g_, g_->p.pos.x + 2, g_->p.pos.y - 2,  
             g_->p.pos.x + (200.0f * cos(DEG2RAD((float)((g_->p.rotation - (FOV / 2)) + i)))),
@@ -598,7 +638,7 @@ static void render_minimap(game_state *g_)
     {
         for(int zz = 0; zz < 2; zz++)
         {
-            for(uint32_t i = 0; i < g_->scene._walls_ix; i++)
+            for(uint16_t i = 0; i < g_->scene._walls_ix; i++)
             {
                 wall *l = &(g_->scene._walls[i]);
                 /* if(g_->scene._sectors[i].n_vertices <= 1)
@@ -613,11 +653,11 @@ static void render_minimap(game_state *g_)
                     if(zz == 1 && ( l->_sector/* &g_->scene._sectors[i] */ == g_->p._sect))
                     {
                         d_line(g_, (int)(a->x), (int)(a->y), (int)(b->x), (int)(b->y),
-                            (!l->_op_sect) ? 0x0000FF : 0xFFFF00);
+                            (l->_op_sect) ? 0x0000FF : 0xFFFF00);
                     }else if (zz == 0)
                     {
                         d_line(g_, (int)(a->x), (int)(a->y), (int)(b->x), (int)(b->y),
-                            (!l->_op_sect) ? 0x888888 : 0xFFFFFF);
+                            (l->_op_sect) ? 0x888888 : 0xFFFFFF);
                     }
                 /* } */
             }
@@ -627,7 +667,7 @@ static void render_minimap(game_state *g_)
     // vertices
     if(g_->scene._verts_count > 1)
     {
-        for(uint32_t i = 0; i < g_->scene._verts_count; i ++)
+        for(uint16_t i = 0; i < g_->scene._verts_count; i ++)
         {
             const v2 a = g_->scene._verts[i];
             const int T = 4;
@@ -643,11 +683,12 @@ static void render_minimap(game_state *g_)
         }
     }
 
-    if(g_->scene.bsp_head->_front 
+    /*if(g_->scene.bsp_head->_front 
         || g_->scene.bsp_head->_back)
     {
         draw_bsp(g_, g_->scene.bsp_head, WINDOW_WIDTH / 2, 450, 120, 0);
-    }   
+    }
+    */
 }
 
 
@@ -684,7 +725,7 @@ static void parse_txt(game_state *g_, const char *f)
         return ;
     int fd = open(f, O_RDONLY);
 
-    if(!fd)
+    if(fd < 0)
     {
         perror("Error opening the file \n");
         return ;
@@ -726,7 +767,7 @@ static void parse_txt(game_state *g_, const char *f)
                     else
                     {
                         const float x = atof(line); 
-                        const uint32_t c = g_->scene._verts_count;
+                        const uint16_t c = g_->scene._verts_count;
                         g_->scene._verts = (v2 *)realloc(g_->scene._verts, sizeof(v2) * (c + 1));
                         if(!g_->scene._verts)
                             return;
@@ -754,6 +795,7 @@ static void parse_txt(game_state *g_, const char *f)
                 g_->scene._sectors = (sector *) realloc(g_->scene._sectors, sizeof(sector) * (k + 1));
                 if(!g_->scene._sectors)
                     return ;
+
                 g_->scene._sectors[k].n_portals = 0;
                 g_->scene._sectors[k].portals = (sector **)calloc(sizeof(sector *), 1);
 
@@ -785,10 +827,12 @@ static void parse_txt(game_state *g_, const char *f)
                         { 
                             const int 
                                     a = atoi(v_line),
-                                    ix = g_->scene._sectors[k].n_portals;                               
+                                    ix = g_->scene._sectors[k].n_portals;
                             g_->scene._sectors[k].portals = (sector **)(
-                                realloc(g_->scene._sectors[k].portals, sizeof(sector *) * ix + 1)
+                                realloc(g_->scene._sectors[k].portals, sizeof(sector *) * (ix + 1))
                             );
+                            if(!g_->scene._sectors[k].portals)
+                                return ;
                             if(a < 0){ // 'x'
                                 g_->scene._sectors[k].portals[ix] = NULL;
                             }else
@@ -818,22 +862,24 @@ static void parse_txt(game_state *g_, const char *f)
     }
     close(fd);
     printf("\033\[32mSUCCESS LOADING '%s'  [%d vertices, %d sectors].\033\[33m \n", f, g_->scene._verts_count, g_->scene._sectors_count);
-    // re attriubte correctly to g_-> game_state struct
-    for(uint32_t i = 0; i < g_->scene._verts_count; i++)
+    // scale vertices to map_grid
+    for(uint16_t i = 0; i < g_->scene._verts_count; i++)
     {
         g_->scene._verts[i].x *= MAP_TILE;
         g_->scene._verts[i].y *= MAP_TILE;
     }
     // each sector
-    for(uint32_t i = 0; i < g_->scene._sectors_count; i++)
+    for(uint16_t i = 0; i < g_->scene._sectors_count; i++)
     {
         printf("SECTOR[%d] \t %.0f %.0f \t \t ", i, g_->scene._sectors[i].floor, g_->scene._sectors[i].ceil);
         if(g_->scene._sectors[i].n_vertices < 2)
             continue;
         // each vertices
-        for(uint32_t j = 0; j < g_->scene._sectors[i].n_vertices; j++)
+        for(uint16_t j = 0; j < g_->scene._sectors[i].n_vertices; j++)
         {
-            /*const*/ v2 
+            /*
+            v2 
+
                 *a = g_->scene._sectors[i].vertices[j],
                 *b = (j == g_->scene._sectors[i].n_vertices -1) ? 
                         (g_->scene._sectors[i].vertices[0])
@@ -845,7 +891,7 @@ static void parse_txt(game_state *g_, const char *f)
             
             printf("%d ", d);         
             const sector 
-                *s = &(g_->scene._sectors[i]),
+                *s = &(g_->scene._sectors[i]);
                 *op_s = (g_->scene._sectors[i].portals[j]);
 
             wall *l = &(g_->scene._walls[g_->scene._walls_ix]);
@@ -853,12 +899,24 @@ static void parse_txt(game_state *g_, const char *f)
             l->a = (a);
             l->b = (b);
             l->_sector = (sector *)(s);
-            l->_op_sect = (sector *)(op_s);
+            //l->_op_sect = (sector *)(op_s);
+        
             // sector wall
-            g_->scene._sectors[i].walls[g_->scene._sectors[i].n_walls] = (l);
+            g_->scene._sectors[i].walls[
+                g_->scene._sectors[i].n_walls
+            ] = (l);
 
             g_->scene._walls_ix++;
-            g_->scene._sectors[i].n_walls++;
+            g_->scene._sectors[i].n_walls++;*/
+        }
+        printf("  ");
+        // each portals ??
+        for(uint16_t j = 0; j < g_->scene._sectors[i].n_portals; j++)
+        {
+            if(!g_->scene._sectors[i].portals[j])
+                printf("x ");
+            else
+                printf("1 ");
         }
         printf("\n");
     } 
@@ -890,7 +948,7 @@ static wall *heuristic_bsp(const game_state *g_, wall *tracked_wall, wall *_regi
     }
     int s_score = INT_MAX;
     wall *selected_wall = NULL;
-    for(uint32_t i = 0; i < _region_len; i ++)
+    for(uint16_t i = 0; i < _region_len; i ++)
     {
         const wall *w = &(_region[i]); 
         if(w->_in_bsp
@@ -903,7 +961,7 @@ static wall *heuristic_bsp(const game_state *g_, wall *tracked_wall, wall *_regi
         // score format is : [linedefs in front | linedefs in back | splits]
         int scores[3] = {0, 0, 0};
         // re-loop each [linedefs/walls]
-        for(uint32_t j = 0; j < _region_len; j++)
+        for(uint16_t j = 0; j < _region_len; j++)
         {
             // either comparing to itself or wall alr in the bsp tree
             if(&(_region[j]) == w
@@ -918,7 +976,7 @@ static wall *heuristic_bsp(const game_state *g_, wall *tracked_wall, wall *_regi
             // D > 0 → Point is in front.
             // D < 0 → Point is in back.
             // D = 0 → Point is exactly on the partition.
-            for(uint32_t k = 0; k < 2; k++)
+            for(uint16_t k = 0; k < 2; k++)
             {
                 const f32 
                     eq = (ac[k].x - j_w->a->x) * (j_w->b->y - j_w->a->y)
@@ -964,8 +1022,9 @@ static BSP_node *bsp_(game_state *g_, wall **_region, unsigned int _region_size)
 {
     // let leafs exists
     //if(!_region || !_region_size)  return (NULL);
+    return (NULL);
     BSP_node* node = (BSP_node*)malloc(sizeof(BSP_node));
-
+    
     node->_partition = NULL;
     node->_front = NULL;
     node->_back = NULL;
@@ -985,7 +1044,7 @@ static BSP_node *bsp_(game_state *g_, wall **_region, unsigned int _region_size)
         front_len = 0,
         back_len = 0;
     // attribute [left/right] new splitted regions
-    for(uint32_t i = 0; i < _region_size; i ++)
+    for(uint16_t i = 0; i < _region_size; i ++)
     {
         const wall * 
             l_def = (_region[i]);
@@ -1032,21 +1091,26 @@ static BSP_node *bsp_(game_state *g_, wall **_region, unsigned int _region_size)
 
 static void init_bsp(game_state *g_)
 { 
+    size_t n = g_->scene._walls_ix;
+    if (g_->scene._walls_ix <= 0 || g_->scene._walls_ix > 512) {
+        fprintf(stderr, "Invalid wall count: %d\n", g_->scene._walls_ix);
+        return;
+    }
     // INIT (BSP) -> SPLITTED REGIONS
     // ---------------------
     BSP_node* node = (BSP_node*)malloc(sizeof(BSP_node));
     wall *splitter = &(g_->scene._walls[g_->scene._walls_ix / 2]);
     // allocate new region
     wall 
-        **front_region = (wall **)malloc(sizeof(wall *) * (g_->scene._walls_ix)),
-        **back_region = (wall **)malloc(sizeof(wall *) * (g_->scene._walls_ix));
+        **front_region = (wall **)malloc(sizeof(wall *) * (n)),
+        **back_region = (wall **)malloc(sizeof(wall *) * (n));
     if(!front_region || !back_region)
         return ;
     int
         front_len = 0,
         back_len = 0; 
     // initliaze whole left/right] new splitted regions
-    for(uint32_t i = 0; i < g_->scene._walls_ix; i ++)
+    for(uint16_t i = 0; i < g_->scene._walls_ix; i ++)
     {
         const wall * 
             l_def = &(g_->scene._walls[i]);
@@ -1199,7 +1263,13 @@ static int init_doom(game_state **g_)
         return (-1);
     (*g_)->scene._verts_count = 1;
     (*g_)->scene._sectors_count = 1;
-
+    // memset static arrays
+    // (prevents irregular segfaults)
+    for(uint16_t i = 0; i< (*g_)->scene._sectors_count; i++)
+    {
+        memset((*g_)->scene._sectors[i].walls, 0, sizeof(s_wall *));
+        memset((*g_)->scene._sectors[i].vertices, 0, sizeof(v2 *));
+    }
     size_t total = 0;
 
     // static structs

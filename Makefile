@@ -6,6 +6,9 @@ CFLAGS = -Wall
 CFLAGS += -std=c99
 CFLAGS += -Wno-unused-parameter
 CFLAGS += -Wno-unused-function
+## compile with AddressSanitizer (GCC/Clang)
+CFLAGS += -fsanitize=address -g
+CFLAGS += -Dallocator_may_return_null=1
 INCLUDES = -I./src/*.h
 LDFLAGS = $(shell sdl2-config --libs)
 CFLAGS += $(shell sdl2-config --cflags)
