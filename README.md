@@ -16,23 +16,21 @@ designed for non-Euclidean level layouts, efficient traversal, and classic softw
 
 ---
 
-## 🎮 Screenshots
+## sreenshots
 
 <p align="center">
-  <img src="images/sc.png" alt="Gameplay Screenshot 1" width="32%">
-  <img src="images/sc1.png" alt="Gameplay Screenshot 2" width="32%">
-  <img src="images/sc2.png" alt="Gameplay Screenshot 3" width="32%">
+  <img src="images/sc2.png" alt="minimap" width="32%">
 </p>
 
 ---
 
 ## features
 
-- ✅ BSP-based collision and entity placement
-- ✅ sector & portal rendering system
-- ✅ support for room-over-room and recursive layouts
-- ✅ software renderer using front-to-back portal traversal
-- ✅ doom-like movement, physics, and entity management
+-  BSP-based collision and entity placement
+- sector & portal rendering system
+- support for room-over-room and recursive layouts
+- software renderer using front-to-back portal traversal
+- doom-like movement, physics, and entity management
 
 ---
 
