@@ -37,6 +37,5 @@ designed for non-Euclidean level layouts, efficient traversal, and classic softw
 
 ```bash
 git clone https://github.com/youradrien/doom.c.git
-cd doom.c
-gcc -O2 -o doom doom.c -lSDL2
+make
 ./doom <map.wad>
