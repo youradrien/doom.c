@@ -792,17 +792,22 @@ static void parse_txt(game_state *g_, const char *f)
                 const int 
                     k = g_->scene._sectors_count;
                 stored_n += 8;
-                g_->scene._sectors = (sector *) realloc(g_->scene._sectors, sizeof(sector) * (k + 1));
-                if(!g_->scene._sectors)
+                g_->scene._sectors = (sector *) realloc(
+                        g_->scene._sectors, 
+                        sizeof(sector) * (k + 1)
+                    );
+                if (!g_->scene._sectors)
                     return ;
 
-                g_->scene._sectors[k].n_portals = 0;
                 g_->scene._sectors[k].portals = (sector **)calloc(sizeof(sector *), 1);
-
+                g_->scene._sectors[k].n_portals = 0;
                 g_->scene._sectors[k].n_vertices = 0;
+                g_->scene._sectors[k].indx = (k); // <- lowky useful
+
                 while(sscanf(bfr + stored_n, "%50s%n", v_line, &read_n) && stored_n < read_len) 
                 { 
                     v_line[read_n] = '\0';
+                    // sect->floor && ceil
                     if(c == 0){
                         g_->scene._sectors[k].floor = (float)(atoi(v_line));
                     }
@@ -811,7 +816,7 @@ static void parse_txt(game_state *g_, const char *f)
                     }
                     else
                     {
-                        if(!b) // register vertices ptrs
+                        if(!b) // register sect->vertices
                         {
                             const int 
                                 v_ = g_->scene._sectors[k].n_vertices,
@@ -820,10 +825,9 @@ static void parse_txt(game_state *g_, const char *f)
                             { 
                                 g_->scene._sectors[k].vertices[v_] = (v2 *)(&(g_->scene._verts[ix]));
                                 g_->scene._sectors[k].n_vertices = (v_ + 1);
-                              
                             }
                         }
-                        else// register portals    
+                        else// register sect->portals    
                         { 
                             const int 
                                     a = atoi(v_line),
@@ -831,12 +835,17 @@ static void parse_txt(game_state *g_, const char *f)
                             g_->scene._sectors[k].portals = (sector **)(
                                 realloc(g_->scene._sectors[k].portals, sizeof(sector *) * (ix + 1))
                             );
-                            if(!g_->scene._sectors[k].portals)
+                            g_->scene._sectors[k].portals[ix] = (sector *) (malloc(sizeof(sector)));
+                            if(!g_->scene._sectors[k].portals 
+                                || ! g_->scene._sectors[k].portals[ix])
                                 return ;
                             if(a < 0){ // 'x'
                                 g_->scene._sectors[k].portals[ix] = NULL;
-                            }else
-                                g_->scene._sectors[k].portals[ix] = &(g_->scene._sectors[ix]);
+                            }else// 'number [0-9]'
+                            {
+                                // g_->scene._sectors[k].portals[ix] = &(g_->scene._sectors[ix]);
+                                (g_->scene._sectors[k].portals[ix])->indx = (a);
+                            }
                             g_->scene._sectors[k].n_portals ++; 
                         }
                         if(*(bfr + stored_n + (read_n)) == '\t')
@@ -861,7 +870,7 @@ static void parse_txt(game_state *g_, const char *f)
         }
     }
     close(fd);
-    printf("\033\[32mSUCCESS LOADING '%s'  [%d vertices, %d sectors].\033\[33m \n", f, g_->scene._verts_count, g_->scene._sectors_count);
+    printf("\033\[32mSUCCESS LOADING '%s'  [%d vertices, %d sectors].\033\[0m \n", f, g_->scene._verts_count, g_->scene._sectors_count);
     // scale vertices to map_grid
     for(uint16_t i = 0; i < g_->scene._verts_count; i++)
     {
@@ -871,15 +880,20 @@ static void parse_txt(game_state *g_, const char *f)
     // each sector
     for(uint16_t i = 0; i < g_->scene._sectors_count; i++)
     {
-        printf("SECTOR[%d] \t %.0f %.0f \t \t ", i, g_->scene._sectors[i].floor, g_->scene._sectors[i].ceil);
-        if(g_->scene._sectors[i].n_vertices < 2)
+        if(g_->scene._sectors[i].n_vertices < 2 
+            || !(&g_->scene._sectors[i])
+            || g_->scene._sectors[i].n_vertices > 256
+        )
             continue;
+        printf("\033[35msector[%d]  %.0f %.0f    ", i, g_->scene._sectors[i].floor, g_->scene._sectors[i].ceil);
+        g_->scene._sectors[i].n_walls = 0;
         // each vertices
+        // continue ;
         for(uint16_t j = 0; j < g_->scene._sectors[i].n_vertices; j++)
         {
-            /*
+            if(g_->scene._sectors[i].n_vertices <= 1)
+                continue ;
             v2 
-
                 *a = g_->scene._sectors[i].vertices[j],
                 *b = (j == g_->scene._sectors[i].n_vertices -1) ? 
                         (g_->scene._sectors[i].vertices[0])
@@ -888,37 +902,65 @@ static void parse_txt(game_state *g_, const char *f)
             int d = 0;
             while(d < g_->scene._verts_count && (&g_->scene._verts[d] != (v2 *)(a)))
                 d++;
+            printf("%d ", d);    
             
-            printf("%d ", d);         
-            const sector 
+            const sector
                 *s = &(g_->scene._sectors[i]);
-                *op_s = (g_->scene._sectors[i].portals[j]);
-
+            if (g_->scene._walls == NULL)
+            {
+                g_->scene._walls = malloc(sizeof(wall) * 1);
+            }else
+            {
+                g_->scene._walls = (wall *) realloc(
+                        g_->scene._walls,
+                        sizeof(wall) * (g_->scene._walls_ix + 1)
+                );
+            }
+            if( !g_->scene._walls ){
+                fprintf(stderr, "realloc failed\n");
+                return ;
+            }
+            // craft new wall !
             wall *l = &(g_->scene._walls[g_->scene._walls_ix]);
-            // [A] [B]
+            // wall verts[A] [B]
             l->a = (a);
             l->b = (b);
+            // wall sector
             l->_sector = (sector *)(s);
-            //l->_op_sect = (sector *)(op_s);
-        
-            // sector wall
-            g_->scene._sectors[i].walls[
-                g_->scene._sectors[i].n_walls
-            ] = (l);
 
+            // wall portal-sector
+            /* if(g_->scene._sectors[i].portals 
+                && j < g_->scene._sectors[i].n_portals)
+            {
+                if((g_->scene._sectors[i].portals[j]))
+                    l->_op_sect = (sector *)((g_->scene._sectors[i].portals[j]));
+            }
+        
+            if (g_->scene._sectors[i].n_walls >= 256) {
+                fprintf(stderr, "Too many walls in sector %d\n", i);
+                exit(EXIT_FAILURE);
+            }*/ 
+            // sector wall
+            if(l)
+            {
+                g_->scene._sectors[i].walls[
+                    g_->scene._sectors[i].n_walls
+                ] = (l);
+            }
+         
             g_->scene._walls_ix++;
-            g_->scene._sectors[i].n_walls++;*/
+            g_->scene._sectors[i].n_walls++;
         }
-        printf("  ");
+        printf("    ");
         // each portals ??
         for(uint16_t j = 0; j < g_->scene._sectors[i].n_portals; j++)
         {
             if(!g_->scene._sectors[i].portals[j])
                 printf("x ");
             else
-                printf("1 ");
+                printf("%d ",(g_->scene._sectors[i].portals[j])->indx);
         }
-        printf("\n");
+        printf("\033[0m\n");
     } 
 }
 
@@ -1248,9 +1290,11 @@ static int init_doom(game_state **g_)
     (*g_)->p.height = 7.0f;
     (*g_)->p.y_pos = 0.0f;
     (*g_)->render_mode = false;
-    (*g_)->scene._walls = (wall *) malloc(400 * sizeof(wall));
+    ((*g_)->scene._walls_ix) = 0;
+    (*g_)->scene._walls = NULL;
+    /* (*g_)->scene._walls = (wall *) malloc(400 * sizeof(wall));
     if (!(*g_)->scene._walls)
-        return (-1);
+        return (-1); */
     (*g_)->scene._verts = (v2 *)malloc(sizeof(v2));
     if(!(*g_)->scene._verts)
         return (-1);
