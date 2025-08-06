@@ -86,7 +86,7 @@ typedef struct s_sector
     s_sector	**portals;
     uint16_t	n_portals;
 
-    uint16_t	indx;
+    int16_t	indx;
 }   sector;
 
 //  [walls | linedefs]

@@ -840,7 +840,8 @@ static void parse_txt(game_state *g_, const char *f)
                                 || ! g_->scene._sectors[k].portals[ix])
                                 return ;
                             if(a < 0){ // 'x'
-                                g_->scene._sectors[k].portals[ix] = NULL;
+                                // g_->scene._sectors[k].portals[ix] = NULL;
+                                g_->scene._sectors[k].portals[ix]->indx = (-1);
                             }else// 'number [0-9]'
                             {
                                 // g_->scene._sectors[k].portals[ix] = &(g_->scene._sectors[ix]);
@@ -922,24 +923,24 @@ static void parse_txt(game_state *g_, const char *f)
             }
             // craft new wall !
             wall *l = &(g_->scene._walls[g_->scene._walls_ix]);
-            // wall verts[A] [B]
+            // wall verts [A]-[B]
             l->a = (a);
             l->b = (b);
             // wall sector
             l->_sector = (sector *)(s);
-
+            l->_op_sect = NULL;
             // wall portal-sector
-            /* if(g_->scene._sectors[i].portals 
-                && j < g_->scene._sectors[i].n_portals)
+            if(g_->scene._sectors[i].portals[j]->indx >= 0
+                && g_->scene._sectors[i].portals[j]->indx < g_->scene._sectors_count)
             {
-                if((g_->scene._sectors[i].portals[j]))
-                    l->_op_sect = (sector *)((g_->scene._sectors[i].portals[j]));
+                const int ix = g_->scene._sectors[i].portals[j]->indx;
+                l->_op_sect = (sector *)((&g_->scene._sectors[ix]));
             }
-        
+             
             if (g_->scene._sectors[i].n_walls >= 256) {
                 fprintf(stderr, "Too many walls in sector %d\n", i);
                 exit(EXIT_FAILURE);
-            }*/ 
+            }
             // sector wall
             if(l)
             {
@@ -1290,11 +1291,8 @@ static int init_doom(game_state **g_)
     (*g_)->p.height = 7.0f;
     (*g_)->p.y_pos = 0.0f;
     (*g_)->render_mode = false;
-    ((*g_)->scene._walls_ix) = 0;
+    (*g_)->scene._walls_ix = 0;
     (*g_)->scene._walls = NULL;
-    /* (*g_)->scene._walls = (wall *) malloc(400 * sizeof(wall));
-    if (!(*g_)->scene._walls)
-        return (-1); */
     (*g_)->scene._verts = (v2 *)malloc(sizeof(v2));
     if(!(*g_)->scene._verts)
         return (-1);
