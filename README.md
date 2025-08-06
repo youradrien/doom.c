@@ -16,6 +16,16 @@ designed for non-Euclidean level layouts, efficient traversal, and classic softw
 
 ---
 
+## 🎮 Screenshots
+
+<p align="center">
+  <img src="images/screenshot1.png" alt="Gameplay Screenshot 1" width="32%">
+  <img src="images/screenshot2.png" alt="Gameplay Screenshot 2" width="32%">
+  <img src="images/screenshot3.png" alt="Gameplay Screenshot 3" width="32%">
+</p>
+
+---
+
 ## features
 
 - ✅ BSP-based collision and entity placement
