@@ -7,7 +7,7 @@ designed for non-Euclidean level layouts, efficient traversal, and classic softw
 
 ---
 
-## 🧩 Overview
+## 🧩 overview
 
 - **Doom-style BSP** for spatial subdivision and collision detection. (log(n))
 - **Portal/sector-based rendering** inspired by the build engine (Duke Nukem 3D).
@@ -16,7 +16,7 @@ designed for non-Euclidean level layouts, efficient traversal, and classic softw
 
 ---
 
-## 🚀 Features
+## features
 
 - ✅ BSP-based collision and entity placement
 - ✅ sector & portal rendering system
