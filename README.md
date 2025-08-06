@@ -48,5 +48,3 @@ designed for non-Euclidean level layouts, efficient traversal, and classic softw
 ```bash
 git clone https://github.com/youradrien/doom.c.git doom-nukem
 cd doom-nukem
-make
-./doom <map.txt>
