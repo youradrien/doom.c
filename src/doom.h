@@ -30,14 +30,14 @@
 // eye-height of the player
 // (he'll be able to crouch)
 #define EYE_Z 1.65f
-#define FOV 60
+#define FOV 90
 // horizontal fov
 #define HFOV DEG2RAD(90.0f)
 // vertical fov
 #define VFOV 0.7f
 
 #define ZNEAR 0.0001f
-#define ZFAR  620.0f
+#define ZFAR  1024.0f
 
 #define MAP_TILE 20
 
@@ -86,7 +86,7 @@ typedef struct s_sector
     s_sector	**portals;
     uint16_t	n_portals;
 
-    int16_t	indx;
+    int16_t	id;
 }   sector;
 
 //  [walls | linedefs]
@@ -128,7 +128,7 @@ typedef	struct s_player
 
 
 // "QUEUE" of sectors
-#define MAX_QUEUE 128
+#define MAX_QUEUE 3//128
 #define MAX_SECTORS 512
 typedef struct {
     sector *s;

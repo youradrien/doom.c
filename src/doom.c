@@ -93,6 +93,8 @@ static void player_movement(game_state *g_)
 
 static void player_sector_pos(game_state *g_)
 {
+    g_->p._sect = &(g_->scene._sectors[12]);
+    return ;
     // each sect
     f32 last_area = FLT_MAX;
 
@@ -106,7 +108,8 @@ static void player_sector_pos(game_state *g_)
         uint32_t crossingz = 0;
         f32 area = 0.0f;
         if(s->n_vertices < 2 
-            || !(s->floor <= g_->p.y_pos && g_->p.y_pos <= s->ceil) )
+            || s->floor != 0
+            /*|| !(s->floor <= g_->p.y_pos && g_->p.y_pos <= s->ceil)*/ ) // cant move throught floors verticaly
             continue;
         for(uint32_t j = 0; j < s->n_vertices; j++)
         {
@@ -332,9 +335,9 @@ static void render_doomnukem(game_state *g_)
         return ;
 
     // push sector into rendering-queue
-    if (queue_tail >= MAX_QUEUE ) //||)  g_->visited[s->id]) 
+    if (queue_tail >= MAX_QUEUE || g_->scene.visited[s->id])
         return;
-    // visited[s->id] = 1;
+    g_->scene.visited[s->id] = 1;
     g_->scene._queue[queue_tail++] = (queue_entry){ s };
 
     // while queue isnt empty
@@ -347,18 +350,15 @@ static void render_doomnukem(game_state *g_)
         // sector rendering logic:
         // (push a sector in -> queue if he has any portal)
         // render sector
+        const v2
+                zdr = rotate_v2((v2){ 0.0f, 1.0f}, + (HFOV / 2.0f)),
+                zdl = rotate_v2((v2){ 0.0f, 1.0f}, - (HFOV / 2.0f)),
+                znl = (v2){ zdl.x * ZNEAR, zdl.y * ZNEAR }, // z-near left
+                znr = (v2){ zdr.x * ZNEAR, zdr.y * ZNEAR }, // z-near right
+                zfl = (v2){ zdl.x * ZFAR, zdl.y * ZFAR }, // z-far left
+                zfr = (v2){ zdr.x * ZFAR, zdr.y * ZFAR }; // z-far right
         for(uint64_t i = 0; i < curr_sect->n_walls; i++)
         {
-            /*if(!&curr_sect->vertices[i])
-                continue ;
-            wall w = ((wall){
-                curr_sect->vertices[i],
-                (i == curr_sect->n_vertices - 1) 
-                    ? curr_sect->vertices[i + 1] : curr_sect->vertices[0]
-            });
-            w = g_->scene._walls[0];*/
-            
-
             const wall 
                 *l = /* (g_->scene._walls_queue[
                         i
@@ -366,13 +366,15 @@ static void render_doomnukem(game_state *g_)
                     ]) */
                     (curr_sect->walls[i])
                 ;
-            const v2
+            if(!l || !l->a || !l->b)
+                continue ;
+            /* const v2
                 zdr = rotate_v2((v2){ 0.0f, 1.0f}, + (HFOV / 2.0f)),
                 zdl = rotate_v2((v2){ 0.0f, 1.0f}, - (HFOV / 2.0f)),
                 znl = (v2){ zdl.x * ZNEAR, zdl.y * ZNEAR }, // z-near left
                 znr = (v2){ zdr.x * ZNEAR, zdr.y * ZNEAR }, // z-near right
                 zfl = (v2){ zdl.x * ZFAR, zdl.y * ZFAR }, // z-far left
-                zfr = (v2){ zdr.x * ZFAR, zdr.y * ZFAR }; // z-far right
+                zfr = (v2){ zdr.x * ZFAR, zdr.y * ZFAR }; // z-far right */
 
             // linepos from [world-space] to [camera-space]
             const v2 
@@ -434,7 +436,7 @@ static void render_doomnukem(game_state *g_)
                     //printf("SORTIE-GAUCHE \n");
                 }else
                 {
-                    //printf("SORTIE-DROITE \n");
+                    // printf("SORTIE-DROITE \n");
                 } 
 
                 // if we define dx=x2-x1 and dy=y2-y1, 
@@ -453,8 +455,7 @@ static void render_doomnukem(game_state *g_)
                     cp1 = right;
                     ac1 = normalize_angle((double) (- (atan2(cp1.y, cp1.x) - PI_2)));    
                 }
-            }
-            
+            }            
             // wrong side of the wall
             if((ac0 < ac1 && below_)
                 || (ac1 < ac0 && (!below_))
@@ -464,8 +465,8 @@ static void render_doomnukem(game_state *g_)
             }
             // wall attributes
             f32 
-                z_floor = curr_sect->floor + (g_->p.height), //(curr_sect->floor) + g_->p.height / 2;
-                z_ceiling = curr_sect->ceil;// - (g_->p.height);// (curr_sect->ceil) + g_->p.height / 2; 
+                z_floor = (curr_sect->floor * 1.5f) + (g_->p.height), //(curr_sect->floor) + g_->p.height / 2;
+                z_ceiling = curr_sect->ceil + (g_->p.height);// (curr_sect->ceil) + g_->p.height / 2; 
 
             // impossible (floor above ceiling)
             if(z_floor >= z_ceiling){
@@ -508,7 +509,7 @@ static void render_doomnukem(game_state *g_)
 
              // wall is behind or degenerate
             if (x2 <= x1) 
-                return; 
+                continue; 
 
             // portal ?
             if(!l->_op_sect) // non-portal
@@ -536,7 +537,7 @@ static void render_doomnukem(game_state *g_)
 
                 }
                 // bottom wall
-                if(l->_op_sect->floor > curr_sect->floor)
+                if(l->_op_sect->floor > curr_sect->floor && 1 == 0)
                 {
                     // wall y's
                     const int
@@ -572,6 +573,22 @@ static void render_doomnukem(game_state *g_)
 
             // todo:
             // texture-mapping
+            
+            // push wall(portal) to queue
+            if(l->_op_sect)
+            {
+                if(!g_->scene.visited[l->_op_sect->id])
+                {
+                    g_->scene.visited[l->_op_sect->id] = 1;
+                    if (queue_tail < MAX_QUEUE) {
+                        g_->scene._queue[queue_tail++] = (queue_entry){ l->_op_sect };
+                    } else {
+                        // overflow
+                        // fprintf(stderr, "Render queue overflow!\n");
+                        // handle overflow (skip push, crash, etc.)
+                    }
+                }
+            }
         }
     }
 }
@@ -672,10 +689,6 @@ static void render_minimap(game_state *g_)
             const v2 a = g_->scene._verts[i];
             const int T = 4;
             int color = 0x00FF00;
-            /* for(uint32_t i = 0; i < g_->p._sect->n_vertices; i ++)
-                if(g_->p._sect->vertices[i] == &g_->scene._verts[i])
-                    color = 0xFFFF00;
-            */
             d_line(g_, (int)(a.x - T), (int)(a.y - T), (int)(a.x + T), (int)(a.y - T), color);
             d_line(g_, (int)(a.x - T), (int)(a.y + T), (int)(a.x + T), (int)(a.y + T), color);
             d_line(g_, (int)(a.x - T), (int)(a.y - T), (int)(a.x - T), (int)(a.y + T), color);
@@ -802,7 +815,7 @@ static void parse_txt(game_state *g_, const char *f)
                 g_->scene._sectors[k].portals = (sector **)calloc(sizeof(sector *), 1);
                 g_->scene._sectors[k].n_portals = 0;
                 g_->scene._sectors[k].n_vertices = 0;
-                g_->scene._sectors[k].indx = (k); // <- lowky useful
+                g_->scene._sectors[k].id = (k); // <- lowky useful
 
                 while(sscanf(bfr + stored_n, "%50s%n", v_line, &read_n) && stored_n < read_len) 
                 { 
@@ -841,11 +854,11 @@ static void parse_txt(game_state *g_, const char *f)
                                 return ;
                             if(a < 0){ // 'x'
                                 // g_->scene._sectors[k].portals[ix] = NULL;
-                                g_->scene._sectors[k].portals[ix]->indx = (-1);
+                                g_->scene._sectors[k].portals[ix]->id = (-1);
                             }else// 'number [0-9]'
                             {
                                 // g_->scene._sectors[k].portals[ix] = &(g_->scene._sectors[ix]);
-                                (g_->scene._sectors[k].portals[ix])->indx = (a);
+                                (g_->scene._sectors[k].portals[ix])->id = (a);
                             }
                             g_->scene._sectors[k].n_portals ++; 
                         }
@@ -890,6 +903,7 @@ static void parse_txt(game_state *g_, const char *f)
         g_->scene._sectors[i].n_walls = 0;
         // each vertices
         // continue ;
+        float signed_area = 0.0f;
         for(uint16_t j = 0; j < g_->scene._sectors[i].n_vertices; j++)
         {
             if(g_->scene._sectors[i].n_vertices <= 1)
@@ -900,6 +914,8 @@ static void parse_txt(game_state *g_, const char *f)
                         (g_->scene._sectors[i].vertices[0])
                         :   
                         (g_->scene._sectors[i].vertices[j + 1]);
+            signed_area += (b->x - a->x) * (b->y + a->y);
+
             int d = 0;
             while(d < g_->scene._verts_count && (&g_->scene._verts[d] != (v2 *)(a)))
                 d++;
@@ -907,16 +923,18 @@ static void parse_txt(game_state *g_, const char *f)
             
             const sector
                 *s = &(g_->scene._sectors[i]);
-            if (g_->scene._walls == NULL)
+            /* if (g_->scene._walls == NULL)
             {
                 g_->scene._walls = malloc(sizeof(wall) * 1);
             }else
             {
+                //printf("Before realloc: line->a = %p\n", (void*)(*g_->scene._walls).a);
                 g_->scene._walls = (wall *) realloc(
                         g_->scene._walls,
                         sizeof(wall) * (g_->scene._walls_ix + 1)
                 );
-            }
+                // printf("After realloc:  line->a = %p\n", (void*)(*g_->scene._walls).a); // still same = BAD
+            } */
             if( !g_->scene._walls ){
                 fprintf(stderr, "realloc failed\n");
                 return ;
@@ -930,10 +948,10 @@ static void parse_txt(game_state *g_, const char *f)
             l->_sector = (sector *)(s);
             l->_op_sect = NULL;
             // wall portal-sector
-            if(g_->scene._sectors[i].portals[j]->indx >= 0
-                && g_->scene._sectors[i].portals[j]->indx < g_->scene._sectors_count)
+            if(g_->scene._sectors[i].portals[j]->id >= 0
+                && g_->scene._sectors[i].portals[j]->id < g_->scene._sectors_count)
             {
-                const int ix = g_->scene._sectors[i].portals[j]->indx;
+                const int ix = g_->scene._sectors[i].portals[j]->id;
                 l->_op_sect = (sector *)((&g_->scene._sectors[ix]));
             }
              
@@ -959,8 +977,12 @@ static void parse_txt(game_state *g_, const char *f)
             if(!g_->scene._sectors[i].portals[j])
                 printf("x ");
             else
-                printf("%d ",(g_->scene._sectors[i].portals[j])->indx);
+                printf("%d ",(g_->scene._sectors[i].portals[j])->id);
         }
+        if(signed_area > 0)
+            printf(" ❌");
+        else 
+            printf("✅");
         printf("\033[0m\n");
     } 
 }
@@ -1292,7 +1314,7 @@ static int init_doom(game_state **g_)
     (*g_)->p.y_pos = 0.0f;
     (*g_)->render_mode = false;
     (*g_)->scene._walls_ix = 0;
-    (*g_)->scene._walls = NULL;
+    (*g_)->scene._walls = (wall *) malloc(512 * sizeof(wall));
     (*g_)->scene._verts = (v2 *)malloc(sizeof(v2));
     if(!(*g_)->scene._verts)
         return (-1);
