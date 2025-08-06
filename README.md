@@ -49,4 +49,4 @@ designed for non-Euclidean level layouts, efficient traversal, and classic softw
 git clone https://github.com/youradrien/doom.c.git doom-nukem
 cd doom-nukem
 make
-./doom <map.wad>
+./doom <map.txt>
