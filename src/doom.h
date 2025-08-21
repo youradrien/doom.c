@@ -30,16 +30,16 @@
 // eye-height of the player
 // (he'll be able to crouch)
 #define EYE_Z 1.65f
-#define FOV 90
+#define FOV 80
 // horizontal fov
-#define HFOV DEG2RAD(90.0f)
+#define HFOV DEG2RAD(FOV)
 // vertical fov
-#define VFOV 0.7f
+#define VFOV 0.5f
 
 #define ZNEAR 0.0001f
-#define ZFAR  1024.0f
+#define ZFAR  256.0f
 
-#define MAP_TILE 20
+#define MAP_TILE 18
 
 #define FPS 60
 #define FRAME_TARGET_TIME (1000/FPS)
@@ -59,15 +59,23 @@
    ({ __typeof__ (a) _a = (a); \
        __typeof__ (b) _b = (b); \
      _a < _b ? _a : _b; })
+#define clamp(_x, _mi, _ma) (min(max(_x, _mi), _ma))
 
+
+#define v2_to_v2i(_v) ({ __typeof__(_v) __v = (_v); (v2i) { __v.x, __v.y }; })
+#define v2i_to_v2(_v) ({ __typeof__(_v) __v = (_v); (v2) { __v.x, __v.y }; })
 
 typedef float f32;
+typedef int32_t  i32;
 typedef struct v2_s
 {
     f32 x;
     f32 y;
 } v2;
-
+typedef struct v2i_s 
+{ 
+    i32 x, y; 
+} v2i;
 
 typedef struct s_sector s_sector;
 typedef struct s_wall s_wall;
@@ -112,10 +120,13 @@ typedef struct	t_BSP_node
 typedef	struct s_player
 { 
     v2	pos;
-    f32	rotation;
     f32	height;
     f32 y_pos;
-    
+   
+    // rotations
+    f32	rotation;
+    f32 anglecos, anglesin;
+
     // map-positions
     BSP_node *_node;
     sector *_sect;
@@ -128,11 +139,15 @@ typedef	struct s_player
 
 
 // "QUEUE" of sectors
-#define MAX_QUEUE 3//128
+#define MAX_QUEUE 64 // 128
 #define MAX_SECTORS 512
-typedef struct {
+typedef struct 
+{
     sector *s;
+    int32_t x1;
+    int32_t x2;
 } queue_entry;
+
 typedef struct s_scene
 {
     // walls (linedefs) 
