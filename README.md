@@ -1,19 +1,11 @@
 # doom.c
 
 FPS engine in C, combining: 
- - **doom-style BSP collision and entity handling**
- - **Duke Nukem1996-style sector/portal rendering**
-designed for non-Euclidean level layouts, efficient traversal, and classic software-rendered visuals
-
----
-
-## 🧩 overview
-
-- **Doom-style BSP** for spatial subdivision and collision detection. (log(n))
-- **Portal/sector-based rendering** inspired by the build engine (Duke Nukem 3D).
-- supports room-over-room layouts, recursive portal rendering, and advanced level connectivity.
-- built-in C with minimal dependencies (SDL2).
-
+ - **doom BStree for collision and game entities** (for spatial subdivision and collision detection. (log(n)))
+ - **duke nukem1996-style sector/portal rendering**
+ - non-Euclidean level layouts, efficient traversal.
+ - supports room-over-room layouts, recursive portal rendering, and advanced level connectivity.
+ - built-in C with minimal dependencies (SDL2).
 ---
 
 ## sreenshots
@@ -26,7 +18,7 @@ designed for non-Euclidean level layouts, efficient traversal, and classic softw
 
 ## features
 
--  BSP-based collision and entity placement
+- BSP-based collision and entity placement
 - sector & portal rendering system
 - support for room-over-room and recursive layouts
 - software renderer using front-to-back portal traversal
