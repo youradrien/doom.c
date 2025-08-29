@@ -67,16 +67,16 @@ static void player_movement(game_state *g_)
                 if(i == 18) s = -180.0f;
                 float d_x = cos(DEG2RAD((double)(g_->p.rotation  + s)));
                 float d_y = sin(DEG2RAD((double)(g_->p.rotation  + s))); 
-                g_->p.pos.y += 2.0f * d_y;
-                g_->p.pos.x += 2.0f * d_x;
+                g_->p.pos.y += 0.4f * d_y;
+                g_->p.pos.x += 0.4f * d_x;
                 
             }
             // a
             if(i == 0)
-                g_->p.rotation -= 1.75f;
+                g_->p.rotation -= 2.5f;
             // e
             if(i == 4)
-                g_->p.rotation += 1.75f;
+                g_->p.rotation += 2.5f;
         }
     } 
     if(g_->p.pos.x < 0) g_->p.pos.x = 0;
@@ -94,19 +94,17 @@ static void player_movement(game_state *g_)
 static void player_sector_pos(game_state *g_)
 {
     // each sect
-    f32 last_area = FLT_MAX;
     for(uint32_t i = 0; i < g_->scene._sectors_count; i++)
     {
         sector *s = &g_->scene._sectors[i];
         if (!s || !s->vertices[0]
-            || s->n_vertices <= 0 
-            || s->n_vertices > 512)
+            || s->n_vertices <= 1
+            || s->n_vertices > 512
+            || s->floor > 6)
+        {
             continue;
+        }
         uint32_t crossingz = 0;
-        f32 area = 0.0f;
-        if(s->n_vertices < 2 
-            || !(s->floor <= g_->p.y_pos && g_->p.y_pos <= s->ceil) ) // cant move throught floors verticaly
-            continue;
         for(uint32_t j = 0; j < s->n_vertices; j++)
         {
             v2 
@@ -114,21 +112,16 @@ static void player_sector_pos(game_state *g_)
                 *b = j == s->n_vertices - 1 ? s->vertices[0] : s->vertices[j + 1];
             if(!a || !b)
                 continue;
-            area += (a->x * b->y) - (b->x * a->y);
-            if((a->y > g_->p.pos.y) != (b->y > g_->p.pos.y)
+            if(
+                (a->y > g_->p.pos.y) != (b->y > g_->p.pos.y)
                 && (g_->p.pos.x < (b->x - a->x) * (g_->p.pos.y - a->y) / (b->y - a->y) + a->x ))
             {
                crossingz++; 
             }
         }
-        area = fabsf(area * 0.5f);
         if(crossingz % 2 == 1)
         {
-            if(area < last_area)
-            {
-                last_area = area;
-                g_->p._sect = (s);
-            }
+            g_->p._sect = (s);
         }
     }
 }
@@ -136,14 +129,13 @@ static void player_sector_pos(game_state *g_)
 
 static inline void set_pixel_color(game_state *g_, int x, int y, int c)
 {
-    // segfaults
-    if(x < 0)
-        x = 0;
-    if(x > WINDOW_WIDTH || y > WINDOW_HEIGHT || y < 0)
+    // bounds
+    if((unsigned int)(x) >= WINDOW_WIDTH || (unsigned int)(y) >= WINDOW_HEIGHT)
         return;
-    const int ix = (WINDOW_WIDTH * y) + x;
-    if (ix >= WINDOW_WIDTH * WINDOW_HEIGHT || ix < 0){
-        // fprintf(stderr, "OOB pixel access at (%d,%d) -> ix=%d\n", x, y, ix);
+    const int 
+        ix = (WINDOW_WIDTH * y) + x;
+    if (ix >= WINDOW_WIDTH * WINDOW_HEIGHT || ix < 0)
+    {
         return ;
     }
     g_->buffer[ix] = (c);
@@ -182,8 +174,12 @@ static void d_line(game_state *g_, int x0, int y0, int x1, int y1, uint32_t colo
 
 static void vert_line(game_state *g_, int x, int y0, int y1, uint32_t color)
 {
-    if(y0 < 0) y0 = 0;
-    if(y1 > WINDOW_HEIGHT) y1 = WINDOW_HEIGHT;
+    if(y1 < y0 || x < 0 || x > WINDOW_WIDTH)
+        return;
+    if(y0 < 0) 
+        y0 = 0;
+    if(y1 >= WINDOW_HEIGHT)
+        y1 = WINDOW_HEIGHT - 1;
     for(uint32_t i = y0; i < y1; i++)
     {
         set_pixel_color(g_, x, i, color);
@@ -215,25 +211,6 @@ static void d_rect(game_state *g_, int x, int y, int width, int height, int colo
 // calculate intersection of two segments
 // https://en.wikipedia.org/wiki/Line-line_intersection
 // (return NAN, NAN) if no intersection
-/*
-static inline v2 intersect_segments(v2 a0, v2 a1, v2 b0, v2 b1)
-{
-    const f32 d =
-        ((a0.x - a1.x) * (b0.y - b1.y))
-            - ((a0.y - a1.y) * (b0.x - b1.x));
-    const f32 
-        t = ( (a0.x - b0.x) * (b0.y - b1.y)
-               - (a0.y - b0.y) * (b0.x - b1.x) )/ d,
-        u = ( (a0.x - b0.x) * (a0.y - a1.y)
-             - (a0.y - b0.y) * (a0.x - a1.x) ) / d;
-    // printf("recomputation:  t = %f u = %f \n", t, u);    
-    return (t >= 0 && t <= 1 && u >= 0 && u <= 1) ? 
-        (v2){
-            a0.x + (t * (a1.x - a0.x)),
-            a0.y + (t * (a1.y - a0.y))
-        } : (v2) {NAN, NAN};
-}
-*/
 static inline v2 intersect_segments(v2 a0, v2 a1, v2 b0, v2 b1) {
     const f32 d =
         ((a0.x - a1.x) * (b0.y - b1.y))
@@ -267,7 +244,7 @@ static inline v2 intersect_segments(v2 a0, v2 a1, v2 b0, v2 b1) {
 // clamp values fix behavior near asymptote (PI/2):
 // - as the angle approaches (𝜋/2, -𝜋/2) (90°, -90°)
 // - tan(θ) approaches negative-positive infinity
-static inline int screen_angle_to_x(game_state *g_, f32 angle) 
+static inline int screen_angle_to_x(f32 angle) 
 { 
     // catch asymptote correctly
     // (with epsilon) 
@@ -286,7 +263,6 @@ static inline int screen_angle_to_x(game_state *g_, f32 angle)
                         * PI_2 - PI_4));
         // );
 }
-
 
 // 2D COORDINATES (world space)
 // -> 3D COORDAINTES (camera space)
@@ -313,36 +289,53 @@ static inline f32 normalize_angle(f32 a)
     return a - (TAU * floor((a + M_PI) / TAU)); 
 }
 
+static inline uint32_t abgr_mul(uint32_t col, uint32_t a)
+{ 
+    const uint32_t 
+        br = ((col & 0xFF00FF) * a) >> 8, 
+        g = ((col & 0x00FF00) * a) >> 8; 
+
+    return 0xFF000000 | (br & 0xFF00FF) | (g & 0x00FF00); 
+}
 
 
 // 5. [SOON ? ] Z-buffering (track depth of pixel to avoid rendering useless surfaces)
-static void render_doomnukem_zzzzzz(game_state *g_)
+static void render_doomnukem(game_state *g_)
 {
-    if(!g_)
+    if(!g_ || !g_->p._sect 
+        || g_->scene._sectors_count <= 1)
+    {
         return ;
+    }
     // reset and init
     memset(g_->scene.visited, 0, sizeof(g_->scene.visited));
     queue_entry stack[MAX_QUEUE];
-    uint32_t sp = 0, pz = 0;
+    uint32_t sp = 0;
+    for (uint32_t i = 0; i < WINDOW_WIDTH; i++)
+    {
+        g_->scene.y_hi[i] = WINDOW_HEIGHT - 1;
+        g_->scene.y_lo[i] = 0;
+    }
 
-    if (g_->scene.visited[g_->p._sect->id])
-        return;
 
     // push player_sector with full screen
-    stack[sp++] = (queue_entry){ g_->p._sect, 0, WINDOW_WIDTH};
+    stack[sp++] = (queue_entry){ g_->p._sect, 0, WINDOW_WIDTH - 1};
     // while queue-stack isnt empty
     while(sp > 0)
     {
-        const queue_entry task = stack[--sp];
-        sector *curr_sect = task.s;
-        int 
-            x_min = task.x1,
-            x_max = task.x2;
-
+        const queue_entry entry = stack[--sp];
+        const sector 
+                *curr_sect = entry.s;
+        
         if(!curr_sect 
-             || g_->scene.visited[curr_sect->id])
+             || g_->scene.visited[curr_sect->id]
+             || curr_sect -> n_walls <= 2)
+        {
             continue;
-        g_->scene.visited[curr_sect->id] = (1);
+        }
+
+        if(curr_sect == g_->p._sect)
+            g_->scene.visited[curr_sect->id] = (1);
 
         // render sector
         const v2
@@ -353,9 +346,10 @@ static void render_doomnukem_zzzzzz(game_state *g_)
                 zfl = (v2){ zdl.x * ZFAR, zdl.y * ZFAR }, // z-far left
                 zfr = (v2){ zdr.x * ZFAR, zdr.y * ZFAR }; // z-far right
         // each wall
-        for(uint64_t i = 0; i < curr_sect->n_walls; i++)
+        // (only walls facing the player gets rendered)
+        for(uint32_t i = 0; i < curr_sect->n_walls; i++)
         {
-            const wall 
+              const wall 
                 *l = /* (g_->scene._walls_queue[
                         i
                         (g_->scene._w_queue[i])
@@ -364,13 +358,7 @@ static void render_doomnukem_zzzzzz(game_state *g_)
                 ;
             if(!l || !l->a || !l->b)
                 continue ;
-            /* const v2
-                zdr = rotate_v2((v2){ 0.0f, 1.0f}, + (HFOV / 2.0f)),
-                zdl = rotate_v2((v2){ 0.0f, 1.0f}, - (HFOV / 2.0f)),
-                zfl = (v2){ zdl.x * ZFAR, zdl.y * ZFAR }, // z-far left
-                zfr = (v2){ zdr.x * ZFAR, zdr.y * ZFAR }; // z-far right 
-            */
-
+   
             // linepos from [world-space] to [camera-space]
             const v2 
                 op0 = (v2)(world_to_camera(g_, *l->a)),
@@ -380,7 +368,9 @@ static void render_doomnukem_zzzzzz(game_state *g_)
             v2 cp0 = op0, cp1 = op1;
 
             // both are behind player -> wall behind camera
-            if(cp0.y <= 0 && cp1.y <= 0){
+            if( (cp0.y <= 0 && cp1.y <= 0)
+                || (cp0.y < ZNEAR && cp1.y < ZNEAR) )
+            {
                 continue;
             }
 
@@ -389,6 +379,7 @@ static void render_doomnukem_zzzzzz(game_state *g_)
                 ac0 = normalize_angle(-(atan2(cp0.y, cp0.x) - PI_2)),
                 ac1 = normalize_angle(-(atan2(cp1.y, cp1.x) - PI_2));
 
+            /* 
             bool below_ = true;
             const v2  
                 wall_normal = (v2){
@@ -402,22 +393,19 @@ static void render_doomnukem_zzzzzz(game_state *g_)
             const f32
                 cross = wall_normal.x * p_to_wall.y - wall_normal.y * p_to_wall.x;
             if(cross < 0.0f) // doesnt face each other
-            {
                 below_ = false;
-            }
             if(cross == 0.0f)
-            {
                 continue ;
-            }
+            */
 
             // clip against frustum (if wall intersects with clip planes)
             if(  
                 (cp0.y < ZNEAR)
                 || (cp1.y < ZNEAR)
                 || (ac0 > +(HFOV / 2)) // 1
-                || (ac0 < -(HFOV / 2)) // 2
+                // || (ac0 < -(HFOV / 2)) // 2
                 || (ac1 < -(HFOV / 2)) // 1
-                || (ac1 > +(HFOV / 2)) // 2
+                // || (ac1 > +(HFOV / 2)) // 2
             ){ 
                 // know where the intersection is on the (-HFOV/2 or HFOV/2) line delimiting player's fov
                 v2 
@@ -435,397 +423,249 @@ static void render_doomnukem_zzzzzz(game_state *g_)
                     // printf("SORTIE-DROITE \n");
                 } 
 
-                // if we define dx=x2-x1 and dy=y2-y1, 
-                // then normals are (-dy, dx) and (dy, -dx).
-                if(!(below_)) // doesnt face each other
-                { 
-                    left = (right);
-                    right = intersect_segments(cp0, cp1, znl, zfl);
-                }
                 // recompute angles ac0, ac1         
                 if(!isnan(left.x)){
                     cp0 = left;
-                    ac0 = normalize_angle((double)(- (atan2(cp0.y, cp0.x) - PI_2)));
+                    ac0 = normalize_angle( - (atan2(cp0.y, cp0.x) - PI_2));
                 }
                 if(!isnan(right.x)){
                     cp1 = right;
-                    ac1 = normalize_angle((double) (- (atan2(cp1.y, cp1.x) - PI_2)));    
+                    ac1 = normalize_angle(- (atan2(cp1.y, cp1.x) - PI_2));    
                 }
-            }            
+            }
+
             // wrong side of the wall
-            if((ac0 < ac1 && below_)
-                || (ac1 < ac0 && (!below_))
-            )
+            if( (ac0 < ac1) )
             {
-               continue;
-            }
-
-            // wall attributes
-            f32 
-                z_floor = (curr_sect->floor * 1.5f) + (g_->p.height), //(curr_sect->floor) + g_->p.height / 2;
-                z_ceiling = curr_sect->ceil + (g_->p.height);// (curr_sect->ceil) + g_->p.height / 2; 
-
-            // impossible (floor above ceiling)
-            if(z_floor >= z_ceiling){
                 continue;
-            }
+            }            
 
             // ignore far -HFOV/2..+HFOV/2
-            // check if angles are entirely far of bounds
+            // (both angles are entirely far of bounds)
             if( (ac0 < -(HFOV / 2.0f) && ac1 < -(HFOV / 2.0f))
                 || (ac0 > +(HFOV / 2.0f) && ac1 > +(HFOV/ 2.0f)) 
             ){
-                continue; 
+                continue;
             }
-
-            // wall y-scale
-            const f32 
-                sy0 = ifnan((float)(VFOV * WINDOW_HEIGHT) / cp0.y, 1e10);
-            const f32
-                sy1 = ifnan((float)(VFOV * WINDOW_HEIGHT) / cp1.y, 1e10);
-
-            // wall x's
+            
+            // wall true x's (before portal clamp)
             const int
-                    wx0 = screenclamp(
-                            screen_angle_to_x(g_, ac0)
+                    wx0 = screenclamp (
+                            screen_angle_to_x(ac0)
                         ),
-                    wx1 = screenclamp(
-                            screen_angle_to_x(g_, ac1)
+                    wx1 = screenclamp (
+                            screen_angle_to_x(ac1)
                         );
-
-            // wall y's
-            const int // (inverted wy_b's and wy_top's)
-                   wy_b0 = (WINDOW_HEIGHT / 2) + (int) (z_floor * sy0),
-                   wy_b1 = (WINDOW_HEIGHT / 2) + (int) (z_floor * sy1),
-                   wy_t0 = (WINDOW_HEIGHT / 2) - (int) (z_ceiling * sy0),
-                   wy_t1 = (WINDOW_HEIGHT / 2) - (int) (z_ceiling * sy1);
-
-            // wall sns
-            const bool s = (wx1 > wx0);
-            int 
-                x1 = s ? (wx0) : (wx1),
-                x2 = s ? (wx1) : (wx0);
-
-
-            // wall is behind or degenerate
-            if (x2 <= x1) 
-                continue;
-
+            
             // bounds check against portal window
-            if(x1 > x_max)
-                continue;
-            if(x2 < x_min)
-                continue;
-    
-            // x1 = clamp(x1, x_min, x_max);
-            //x2 = clamp(x2, x_min, x_max);
+            if (wx0 > entry.x2) 
+            { continue; }
+            if (wx1 < entry.x1) 
+            { continue; }
 
-            // portal ?
-            if(!l->_op_sect) // non-portal
+            // stick to entry x-boundaries
+            const int 
+                x0 = clamp(wx0, entry.x1, entry.x2),
+                x1 = clamp(wx1, entry.x1, entry.x2);
+
+            // degenerate
+            if (x1 <= x0
+                || wx0 == wx1)
             {
-                // wall with verlines
-                for(uint16_t i = x1 + 0; i < x2; i++)
-                {
-                    const int 
-                        y_a = wy_b0 + (wy_b1 - wy_b0) 
-                            * (i - x1) / (x2 - x1),
-                        y_b = wy_t0 + (wy_t1 - wy_t0) 
-                            * (i - x1) / (x2 - x1);
-                    vert_line(g_, 
-                        s ? (i) : (x2 + (x1 - i)), 
-                        y_b + 1,
-                        y_a,
-                        l->_op_sect ? 0x0000AA : 0xBBBBBB
-                    );
-                }
-            }else // portal
-            {
-                // top wall
-                if(l->_op_sect->ceil < curr_sect->ceil)
-                {
-
-                }
-                // bottom wall
-                if(l->_op_sect->floor > curr_sect->floor && 1 == 0)
-                {
-                
-                }
-            }
-            // draw ceiling spans above wall
-         
-            // wall-outines
-            // bottom-top-left-right
-            d_line(g_, wx0, wy_b0, wx1, wy_b1, 0xFFFFFF);
-            d_line(g_, wx0, wy_t0, wx1, wy_t1, 0xFFFFFF);
-            d_line(g_, wx0, wy_b0, wx0, wy_t0, 0xFFFFFF);
-            d_line(g_, wx1, wy_b1, wx1, wy_t1, 0xFFFFFF);
-            
-
-            // A-B rects
-            //d_rect(g_, wx0 - 2, wy_t1 - 25, 4, 4, 0x00FFFF);
-            d_rect(g_, wx1 - 2, wy_t1 - 13, 4, 4, 0x00FF00);
-
-            // todo:
-            
-            // push wall(portal) to queue
-            if(l->_op_sect)
-            {
-                if( !g_->scene.visited[l->_op_sect->id]
-                    && sp < MAX_QUEUE
-                    && pz < 4)
-                {
-                    stack[sp++] = (queue_entry){ 
-                        l->_op_sect,
-                        x1,
-                        x2
-                    };
-                    pz++;
-                }
-            }
-        }
-    }
-    printf("rendering: %d sectors \n", pz);
-}
-
-
-
-static void render_doomnukem(game_state *g_)
-{
-    if(!g_)
-        return ;
-    // reset and init
-    memset(g_->scene.visited, 0, sizeof(g_->scene.visited));
-    queue_entry stack[MAX_QUEUE];
-    uint32_t sp = 0;
-
-
-    // push player_sector with full screen
-    stack[sp++] = (queue_entry){ g_->p._sect, 0, WINDOW_WIDTH};
-    // while queue-stack isnt empty
-    while(sp > 0)
-    {
-        const queue_entry entry = stack[--sp];
-        sector *curr_sect = entry.s;
-        int 
-            x_min = entry.x1,
-            x_max = entry.x2;
-
-        if(!curr_sect 
-             || g_->scene.visited[curr_sect->id])
-            continue;
-        g_->scene.visited[curr_sect->id] = (1);
-
-        // render sector
-        const v2
-                zdr = rotate_v2((v2){ 0.0f, 1.0f}, + (HFOV / 2.0f)),
-                zdl = rotate_v2((v2){ 0.0f, 1.0f}, - (HFOV / 2.0f)),
-                znl = (v2){ zdl.x * ZNEAR, zdl.y * ZNEAR }, // z-near left
-                znr = (v2){ zdr.x * ZNEAR, zdr.y * ZNEAR }, // z-near right
-                zfl = (v2){ zdl.x * ZFAR, zdl.y * ZFAR }, // z-far left
-                zfr = (v2){ zdr.x * ZFAR, zdr.y * ZFAR }; // z-far right
-        // each wall
-        for(uint32_t i = 0; i < curr_sect->n_walls; i++)
-        {
-            const wall 
-                *l = /* (g_->scene._walls_queue[
-                    ]) */
-                    (curr_sect->walls[i])
-                ;
-            if(!l || !l->a || !l->b)
                 continue ;
-    
-            // linepos from [world-space] to [camera-space]
-            const v2 
-                op0 = (v2)(world_to_camera(g_, *l->a)),
-                op1 = (v2)(world_to_camera(g_, *l->b));
-           
-            // compute cliped positions
-            v2 cp0 = op0, cp1 = op1;
-
-            // both are behind player -> wall behind camera
-            if(cp0.y <= 0 && cp1.y <= 0){
-                continue;
-            }
-
-            // angle-clip against view frustum
-            f32
-                ac0 = normalize_angle(- (atan2(cp0.y, cp0.x) - PI_2)),
-                ac1 = normalize_angle(- (atan2(cp1.y, cp1.x) - PI_2));
-
-       
-            // clip against frustum (if wall intersects with clip planes)
-            if(  
-                (cp0.y < ZNEAR)
-                || (cp1.y < ZNEAR)
-                || (ac0 > +(HFOV / 2)) // 1
-                || (ac1 < -(HFOV / 2)) // 1
-            ){ 
-                // know where the intersection is on the (-HFOV/2 or HFOV/2) line delimiting player's fov
-                v2 
-                    left = intersect_segments(cp0, cp1, znl, zfl),
-                    right = intersect_segments(cp0, cp1, znr, zfr);
- 
-                // recompute angles ac0, ac1         
-                if(!isnan(left.x)){
-                    cp0 = left;
-                    ac0 = normalize_angle((double)(- (atan2(cp0.y, cp0.x) - PI_2)));
-                }
-                if(!isnan(right.x)){
-                    cp1 = right;
-                    ac1 = normalize_angle((double) (- (atan2(cp1.y, cp1.x) - PI_2)));    
-                }
-            }            
-            // wrong side of the wall
-            if((ac0 < ac1)
-            )
-            {
-                continue;
             }
 
 
-            // ignore far -HFOV/2..+HFOV/2
-            // check if angles are entirely far of bounds
-            if( (ac0 < -(HFOV / 2.0f) && ac1 < -(HFOV / 2.0f))
-                || (ac0 > +(HFOV / 2.0f) && ac1 > +(HFOV/ 2.0f)) 
-            ){
-                continue; 
-            }
-
-            // wall attributes
-            //
-            //
-            // wall y-scale
+            // wall floor && ceiling
             const f32 
-                sy0 = ifnan((float)(VFOV * WINDOW_HEIGHT) / cp0.y, 1e10);
-            const f32
-                sy1 = ifnan((float)(VFOV * WINDOW_HEIGHT) / cp1.y, 1e10);
-            //
-            //
-            // 
-            const f32 
-                z_floor = 0.0f - g_->p.height, //(curr_sect->floor) + ( (2.0f * g_->p.height)), 
-                z_ceiling = 10.0f - g_->p.height; //curr_sect->ceil + ( (2.0f * g_->p.height));
+                z_floor = curr_sect->floor - g_->p.height,
+                z_ceiling = curr_sect->ceil - g_->p.height,
+                z_portal_floor = l->_op_sect ? (l->_op_sect->floor - g_->p.height) : (0),
+                z_portal_ceiling = l->_op_sect ? (l->_op_sect->ceil - g_->p.height) : (0); 
 
             // impossible
             if(z_floor >= z_ceiling){
                 continue;
             }
 
-            // wall x's
-            const int
-                    wx0 = screenclamp(
-                            screen_angle_to_x(g_, ac0)
-                        ),
-                    wx1 = screenclamp(
-                            screen_angle_to_x(g_, ac1)
-                        );
+            // wall y'scale
+            const f32 
+                sy0 = ifnan((float)(VFOV * WINDOW_HEIGHT) / cp0.y, 1e10);
+            const f32
+                sy1 = ifnan((float)(VFOV * WINDOW_HEIGHT) / cp1.y, 1e10);
 
-            // wall y's
+
+            // wall computed left(y's) -> right(y's)
             const int 
                     // floors
-                    y_f0 = (WINDOW_HEIGHT / 2) - (int) (z_floor * sy0),
-                    y_f1 = (WINDOW_HEIGHT / 2) - (int) (z_floor * sy1),
+                    y_f0 = (WINDOW_HEIGHT / 2) - (int) (z_floor * (sy0)),
+                    y_f1 = (WINDOW_HEIGHT / 2) - (int) (z_floor * (sy1)),
                     // ceilings
-                    y_c0 = (WINDOW_HEIGHT / 2) - (int) (z_ceiling * sy0),
-                    y_c1 = (WINDOW_HEIGHT / 2) - (int) (z_ceiling * sy1);
-
-            // wall sns
-            const bool s = true; // (wx1 > wx0);
-            int 
-                x0 = s ? (wx0) : (wx1),
-                x1 = s ? (wx1) : (wx0);
-
-
-            // wall is behind or degenerate
-            if (x1 <= x0) 
-                continue;
-
-            // bounds check against portal window
-            if(x0 > x_max)
-                continue;
-            if(x1 < x_min)
-                continue;
-    
-            // stick to entry x-boundaries
-            x0 = clamp(x0, entry.x1, entry.x2),
-            x1 = clamp(x1, entry.x1, entry.x2);
+                    y_c0 = (WINDOW_HEIGHT / 2) - (int) (z_ceiling * (sy0)),
+                    y_c1 = (WINDOW_HEIGHT / 2) - (int) (z_ceiling * (sy1)),
+                    // portal_floors
+                    p_f0 = (WINDOW_HEIGHT / 2) - (int) ((z_portal_floor) * sy0),
+                    p_f1 = (WINDOW_HEIGHT / 2) - (int) (z_portal_floor * sy1),
+                    // portal_ceilings
+                    p_c0 = (WINDOW_HEIGHT / 2) - (int) (z_portal_ceiling * sy0),
+                    p_c1 = (WINDOW_HEIGHT / 2) - (int) (z_portal_ceiling * sy1);
+ 
+            const int wallshade =
+                (16) * (sin (
+                    atan2f (
+                        l->b->x - l->a->x,
+                        l->b->y - l->b->y)
+                ) + 1.0f);
 
             for(int x = x0; x <= x1; x ++)
             {
                 // calculate progress along x-axis
-                // via wx{0,1} (true walls values bfore portal clamping) 
-                // so that walls cut off due to porta edges
-                // have proper heights
-                const f32 xp = ifnan((x - wx0) / (f32)(wx1 - wx0), 0);
+                // via wx{0,1} (true walls x's bfore portal clamping) 
+                // so that walls cut off due to portal edges have proper heights
+                const int shade = ((!l->_op_sect) && (x == x0 || x == x1)) 
+                        ? 192 : (255 - wallshade);
+                const f32 
+                        xp = ifnan((x - wx0) / (f32)(wx1 - wx0), 0);
+                const int 
+                        bot = y_f0 + (y_f1 - y_f0) 
+                            * (xp),
+                        top = y_c0 + (y_c1 - y_c0) 
+                            * (xp),
+                        c_bot = clamp(bot, g_->scene.y_lo[x], g_->scene.y_hi[x]),
+                        c_top = clamp(top, g_->scene.y_lo[x], g_->scene.y_hi[x]);
+
+                if(c_bot <= 0 && c_top <= 0)
+                    continue;
                 // floor
                 //
                 //
+                for(int y = bot; y < WINDOW_HEIGHT; y++)
+                {
+                    /* float dy = y - (WINDOW_HEIGHT / 2);
+                    float row_dist = g_->p.height / dy;
+
+                    // ray direction for this x
+                    float angle = angle_for_screen_x(g_, x);
+                    float dx = cosf(angle), dy = sinf(angle);
+
+                    float world_x = g_->p.x + row_dist * dx;
+                    float world_y = g_->p.y + row_dist * dy; */
+
+                    // floor shade or texture
+                    uint32_t floor_color = 0x0000FF; // or sample_floor(world_x, world_y);
+                    // set_pixel_color(g_, x, y, floor_color);
+                }
                 // ceiling
                 //
                 //
-                
+                for(int y = 0; y < top; y++)
+                {
+                    /* float dy = y - (WINDOW_HEIGHT / 2);
+                    float row_dist = g_->p.height / dy;
+
+                    // ray direction for this x
+                    float angle = angle_for_screen_x(g_, x);
+                    float dx = cosf(angle), dy = sinf(angle);
+
+                    float world_x = g_->p.x + row_dist * dx;
+                    float world_y = g_->p.y + row_dist * dy; */
+
+                    // floor shade or texture
+                    uint32_t floor_color = 0xFF0000; // or sample_floor(world_x, world_y);
+                    // set_pixel_color(g_, x, y, floor_color);
+                }
+
+
                 // walls with verlines
                 // non-portal
                 if(!l->_op_sect) 
                 {
-                    const int 
-                        bot = y_f0 + (y_f1 - y_f0) 
-                            * (xp),
-                        top = y_c0 + (y_c1 - y_c0) 
-                            * (xp);
                     vert_line(g_, 
                         (x), 
-                        top,
-                        bot,
-                        0xBBBBBB
+                        c_top,
+                        c_bot,
+                        abgr_mul(0xFFD0D0D0, shade)
                     );
                 }
                 // portal
                 else 
                 {
+                    // outlines
+                    set_pixel_color(g_, (x), c_top, 0x444444);
+                    set_pixel_color(g_, (x), c_bot, 0x555555);
+                    const int 
+                            portl_top = p_c0 + (p_c1 - p_c0) 
+                                * (xp),
+                            portl_bot = p_f0 + (p_f1 - p_f0) 
+                                * (xp),
+                            c_portl_top = clamp(portl_top, g_->scene.y_lo[x], g_->scene.y_hi[x]),
+                            c_portl_bot = clamp(portl_bot, g_->scene.y_lo[x], g_->scene.y_hi[x]);
                     // top wall
-                    /* if(l->_op_sect->ceil < curr_sect->ceil)
+                    if(l->_op_sect->ceil < curr_sect->ceil)
                     {
-
+                        vert_line(g_, 
+                            (x), 
+                            c_top,
+                            portl_top,
+                            abgr_mul(0xFFD0D0D0, shade)
+                        );
+                        set_pixel_color(g_, (x), c_portl_top, 0xAAAAAA);
                     }
                     // bottom wall
                     if(l->_op_sect->floor > curr_sect->floor)
                     {
-                
-                    }*/
+                        vert_line(g_, 
+                            (x), 
+                            portl_bot,
+                            c_bot,
+                            abgr_mul(0x777777, shade)
+                        );
+                        set_pixel_color(g_, (x), c_portl_bot, 0xAAAAAA);
+                    }
+
+                    g_->scene.y_lo[x] =
+                        clamp(
+                            max(max(c_top, c_portl_top), g_->scene.y_lo[x]),
+                            0, WINDOW_HEIGHT - 1);
+                    g_->scene.y_hi[x] =
+                        clamp(
+                            min(min(c_bot, c_portl_bot), g_->scene.y_hi[x]),
+                            0, WINDOW_HEIGHT - 1); 
+                    
                 }
             }
-         
-            // wall-outines
-            // bottom-top-left-right
-            if(l->_op_sect){
-            d_line(g_, wx0, y_f0, wx1, y_f1, 0xFFFFFF);
-            d_line(g_, wx0, y_c0, wx1, y_c1, 0xFFFFFF);
-            d_line(g_, wx0, y_f0, wx0, y_c0, 0xFFFFFF);
-            d_line(g_, wx1, y_f1, wx1, y_c1, 0xFFFFFF);}
-            
-
+   
             // A-B rects
-            //d_rect(g_, wx0 - 2, wy_t1 - 25, 4, 4, 0x00FFFF);
-            d_rect(g_, wx1 - 2, y_c1 - 13, 4, 4, 0x00FF00);
+            //d_rect(g_, wx1 - 2, y_c1 - 13, 4, 4, 0x00FF00);
+      
+            // bottom-top-left-right
+            /*
+            d_line(g_, x0, y_f0, x1, y_f1, 0xFFFFFF);
+            d_line(g_, x0, y_c0, x1, y_c1, 0xFFFFFF);
+            d_line(g_, x0, y_f0, x0, y_c0, 0xFFFFFF);
+            d_line(g_, x1, y_f1, x1, y_c1, 0xFFFFFF);
+            */
 
-            
             // push wall(portal) to queue
             if(l->_op_sect)
             {
-                if( /*!g_->scene.visited[l->_op_sect->id] */
+                if( //!g_->scene.visited[l->_op_sect->id] && 
                     sp < MAX_QUEUE)
                 {
-                    /* stack[sp++] = (queue_entry){ 
+                    stack[sp++] = (queue_entry){ 
                         l->_op_sect,
                         x0,
-                        x1
-                    }; */
+                        x1 
+                    };
                 }
             }
         }
     }
 }
+
+
+
+
 
 
 
@@ -858,30 +698,21 @@ static void draw_bsp(game_state *g_, BSP_node* root, int x, int y, int spacing, 
 static void render_minimap(game_state *g_)
 {
     // grid
-    for(uint16_t i = 0; i < WINDOW_WIDTH -1; i += MAP_TILE)
-    {
-        d_line(g_, i, 0, i, WINDOW_HEIGHT, 0x005500);
-        for(uint16_t j = 0; j < WINDOW_HEIGHT; j += MAP_TILE)
-        {
-            d_line(g_, i, j, WINDOW_WIDTH, j, 0x005500);
-        }
-    }
-    // player square and line 
+    for(uint16_t i = 0; i < WINDOW_WIDTH -1; i += MAP_TILE) // vert
+        d_line(g_, i * MAP_ZOOM, 0, i * MAP_ZOOM, WINDOW_HEIGHT, 0x005500);
+    for(uint16_t j = 0; j < WINDOW_HEIGHT; j += MAP_TILE) // horz
+        d_line(g_, 0, j * MAP_ZOOM, WINDOW_WIDTH, j * MAP_ZOOM, 0x005500);
+    // player fov lines 
     for(uint16_t i = 0; i < FOV; i ++)
     {
-        d_line(g_, g_->p.pos.x + 2, g_->p.pos.y - 2,  
-            g_->p.pos.x + (200.0f * cos(DEG2RAD((float)((g_->p.rotation - (FOV / 2)) + i)))),
-            g_->p.pos.y + (200.0f * sin(DEG2RAD((float)((g_->p.rotation - (FOV/2)) + i)))),
-            0x333333
+        d_line(g_, (g_->p.pos.x + 3) * MAP_ZOOM, (g_->p.pos.y + 3) * MAP_ZOOM,  
+            MAP_ZOOM * (g_->p.pos.x + (200.0f * cos(DEG2RAD((float)((g_->p.rotation - (FOV / 2)) + i))))),
+            MAP_ZOOM * (g_->p.pos.y + (200.0f * sin(DEG2RAD((float)((g_->p.rotation - (FOV/2)) + i))))),
+            i == FOV / 2 ? 0xFFFF00 : 0x333333
         );        
     }
-    d_line(g_, g_->p.pos.x, g_->p.pos.y, 
-       g_->p.pos.x + (600.0f * cos(DEG2RAD(g_->p.rotation))),
-       g_->p.pos.y + (600.0f * sin(DEG2RAD(g_->p.rotation))),
-       0xFFFF00
-    );   
-    d_rect(g_, g_->p.pos.x, g_->p.pos.y, 5, 5, 0xFFFF00); 
-    // [World-view]
+    // player cube 
+    d_rect(g_, g_->p.pos.x * MAP_ZOOM, g_->p.pos.y * MAP_ZOOM, 5, 5, 0xFFFF00);
     // sectors
     if(g_->scene._sectors_count > 1)
     {
@@ -896,11 +727,12 @@ static void render_minimap(game_state *g_)
                 if(za == 1)
                 {
                     if(g_->scene.visited[g_->scene._walls[i]._sector->id] == 1)
-                        d_line(g_, (int)(a->x), (int)(a->y), (int)(b->x), (int)(b->y), 0xFF0000);
+                        d_line(g_, (int)(a->x * MAP_ZOOM), (int)(a->y * MAP_ZOOM), (int)(b->x * MAP_ZOOM), (int)(b->y * MAP_ZOOM), 
+                               (l->_op_sect ) ? 0xAAAA00 : 0xFFFF00);
                 }
                 else{
-                    d_line(g_, (int)(a->x), (int)(a->y), (int)(b->x), (int)(b->y),
-                        ( l->_op_sect ) ? 0x0F0F00 : 0xFFFFFF);
+                    d_line(g_, (int)(a->x * MAP_ZOOM), (int)(a->y * MAP_ZOOM), (int)(b->x * MAP_ZOOM), (int)(b->y * MAP_ZOOM),
+                        ( l->_op_sect ) ? 0x0000FF : 0xFFFFFF);
                 }
             }
         }
@@ -911,7 +743,8 @@ static void render_minimap(game_state *g_)
     {
         for(uint16_t i = 0; i < g_->scene._verts_count; i ++)
         {
-            const v2 a = g_->scene._verts[i];
+            v2 a = g_->scene._verts[i];
+            a.x *= MAP_ZOOM; a.y *= MAP_ZOOM;
             const int T = 4;
             int color = 0x00FF00;
             d_line(g_, (int)(a.x - T), (int)(a.y - T), (int)(a.x + T), (int)(a.y - T), color);
@@ -920,7 +753,6 @@ static void render_minimap(game_state *g_)
             d_line(g_, (int)(a.x + T), (int)(a.y - T), (int)(a.x + T), (int)(a.y + T), color); 
         }
     }
-
     /*if(g_->scene.bsp_head->_front 
         || g_->scene.bsp_head->_back)
     {
@@ -1111,6 +943,9 @@ static void parse_txt(game_state *g_, const char *f)
     // scale vertices to map_grid
     for(uint16_t i = 0; i < g_->scene._verts_count; i++)
     {
+        g_->scene._verts[i].x += 2;
+        g_->scene._verts[i].y += 2;
+
         g_->scene._verts[i].x *= MAP_TILE;
         g_->scene._verts[i].y *= MAP_TILE;
     }
@@ -1121,7 +956,9 @@ static void parse_txt(game_state *g_, const char *f)
             || !(&g_->scene._sectors[i])
             || g_->scene._sectors[i].n_vertices > 256
         )
+        {
             continue;
+        }
         printf("\033[35msector[%d]  %.0f %.0f    ", i, g_->scene._sectors[i].floor, g_->scene._sectors[i].ceil);
         g_->scene._sectors[i].n_walls = 0;
         int saved_ix = g_->scene._sectors[i].portals[0]->id;
@@ -1131,7 +968,6 @@ static void parse_txt(game_state *g_, const char *f)
         }
         g_->scene._sectors[i].portals[g_->scene._sectors[i].n_portals - 1]->id = saved_ix;
         // each vertices
-        // continue ;
         float signed_area = 0.0f;
         for(uint16_t j = 0; j < g_->scene._sectors[i].n_vertices; j++)
         {
@@ -1152,28 +988,17 @@ static void parse_txt(game_state *g_, const char *f)
             
             const sector
                 *s = &(g_->scene._sectors[i]);
-            /* if (g_->scene._walls == NULL)
+            if( !g_->scene._walls )
             {
-                g_->scene._walls = malloc(sizeof(wall) * 1);
-            }else
-            {
-                //printf("Before realloc: line->a = %p\n", (void*)(*g_->scene._walls).a);
-                g_->scene._walls = (wall *) realloc(
-                        g_->scene._walls,
-                        sizeof(wall) * (g_->scene._walls_ix + 1)
-                );
-                // printf("After realloc:  line->a = %p\n", (void*)(*g_->scene._walls).a); // still same = BAD
-            } */
-            if( !g_->scene._walls ){
                 fprintf(stderr, "realloc failed\n");
                 return ;
             }
             // craft new wall !
             wall *l = &(g_->scene._walls[g_->scene._walls_ix]);
-            // wall verts [A]-[B]
+            // .verts [A]-[B]
             l->a = (a);
             l->b = (b);
-            // wall sector
+            // ._sector
             l->_sector = (sector *)(s);
             l->_op_sect = NULL;
             // wall portal-sector
@@ -1181,7 +1006,7 @@ static void parse_txt(game_state *g_, const char *f)
                 && g_->scene._sectors[i].portals[j]->id < g_->scene._sectors_count)
             {
                 const int ix = g_->scene._sectors[i].portals[j]->id;
-                l->_op_sect = (sector *)((&g_->scene._sectors[ix]));
+                l->_op_sect = (sector *)((&g_->scene._sectors[ix != -1 ? ix + 1 : ix]));
             }
              
             if (g_->scene._sectors[i].n_walls >= 256) {
@@ -1194,7 +1019,6 @@ static void parse_txt(game_state *g_, const char *f)
                     g_->scene._sectors[i].n_walls
                 ] = (l);
             }
-         
             g_->scene._walls_ix++;
             g_->scene._sectors[i].n_walls++;
         }
@@ -1535,8 +1359,8 @@ static int init_doom(game_state **g_)
         return (-1);
     }
     (*g_)->quit = false;
-    (*g_)->p.pos.x = WINDOW_WIDTH / 3;
-    (*g_)->p.pos.y = WINDOW_HEIGHT / 3;
+    (*g_)->p.pos.x = 10;
+    (*g_)->p.pos.y = 10;
     (*g_)->p.rotation = 0;
     (*g_)->p.height = 7.0f;
     (*g_)->p.y_pos = 0.0f;
@@ -1610,16 +1434,7 @@ static void update(game_state *g_)
     {    
         if(g_->p._sect){
             render_doomnukem(g_);
-            //memset(g_->scene.visited, 0, sizeof(g_->scene.visited));
-            //render_doomnukem_sector(g_, g_->p._sect); 
         }
-        /* render_doomnukem_sect(g_, g_->p._sect);
-        render_doomnukem_sect(g_, &g_->scene._sectors[g_->p._sect->id + 1]);
-        render_doomnukem_sect(g_, &g_->scene._sectors[g_->p._sect->id + 2]);
-        render_doomnukem_sect(g_, &g_->scene._sectors[g_->p._sect->id + 3]);
-        render_doomnukem_sect(g_, &g_->scene._sectors[g_->p._sect->id + 4]);
-        render_doomnukem_sect(g_, &g_->scene._sectors[g_->p._sect->id - 1]);
-        */
     }
     else
     {
@@ -1672,6 +1487,7 @@ int main(int argc, char **argv)
     init_bsp(g_);
 
     printf("\033[32mDOOM RUNNING [%dx%d] \033[0m \n", WINDOW_WIDTH, WINDOW_HEIGHT);
+
 
     // [game loop]
     while(!(g_->quit))

@@ -30,16 +30,17 @@
 // eye-height of the player
 // (he'll be able to crouch)
 #define EYE_Z 1.65f
-#define FOV 80
+#define FOV 60
 // horizontal fov
 #define HFOV DEG2RAD(FOV)
 // vertical fov
-#define VFOV 0.5f
+#define VFOV 0.7f
 
-#define ZNEAR 0.0001f
+#define ZNEAR 0.01f
 #define ZFAR  256.0f
 
-#define MAP_TILE 18
+#define MAP_TILE 3
+#define MAP_ZOOM 5
 
 #define FPS 60
 #define FRAME_TARGET_TIME (1000/FPS)
@@ -51,14 +52,16 @@
 #define normalize(_vn) ({ __typeof__(_vn) __vn = (_vn); const f32 l = length(__vn); (__typeof__(_vn)) { __vn.x / l, __vn.y / l }; })
 #define ifnan(_x, _alt) ({ __typeof__(_x) __x = (_x); isnan(__x) ? (_alt) : __x; })
 #define screenclamp(_a)	((_a == WINDOW_WIDTH) ? (WINDOW_WIDTH - 1) : (_a))
-#define max(a,b) \
+/* #define max(a,b) \
    ({ __typeof__ (a) _a = (a); \
        __typeof__ (b) _b = (b); \
      _a > _b ? _a : _b; })
 #define min(a,b) \
    ({ __typeof__ (a) _a = (a); \
        __typeof__ (b) _b = (b); \
-     _a < _b ? _a : _b; })
+     _a < _b ? _a : _b; }) */
+#define min(_a, _b) ({ __typeof__(_a) __a = (_a), __b = (_b); __a < __b ? __a : __b; })
+#define max(_a, _b) ({ __typeof__(_a) __a = (_a), __b = (_b); __a > __b ? __a : __b; })
 #define clamp(_x, _mi, _ma) (min(max(_x, _mi), _ma))
 
 
@@ -139,13 +142,13 @@ typedef	struct s_player
 
 
 // "QUEUE" of sectors
-#define MAX_QUEUE 64 // 128
+#define MAX_QUEUE 128 // 128
 #define MAX_SECTORS 512
 typedef struct 
 {
     sector *s;
-    int32_t x1;
-    int32_t x2;
+    int x1;
+    int x2;
 } queue_entry;
 
 typedef struct s_scene
@@ -165,6 +168,10 @@ typedef struct s_scene
     // bsp tree
     BSP_node	*bsp_head;
     unsigned int _bsp_depth;
+
+    // uncovered vertical-arrays
+    int y_lo[WINDOW_WIDTH];
+    int y_hi[WINDOW_WIDTH];
 
     // rendering queue 
     queue_entry _queue[MAX_QUEUE];
