@@ -10,6 +10,123 @@ static inline v2 rotate_v2(v2 v, f32 a)
     };
 }
 
+// dot product
+static inline f32 dot(v2 a, v2 b)
+{
+    return a.x * b.x + a.y * b.y;
+}
+
+// squared length
+static inline f32 length2(v2 v)
+{
+    return v.x * v.x + v.y * v.y;
+}
+
+// distance from point P to segment AB
+static f32 p_dist_to_AB(v2 A, v2 B, v2 P)
+{
+    const v2 
+        AB = (v2){ B.x - A.x, B.y - A.y },
+        AP = (v2){ P.x - A.x, P.y - A.y };
+
+
+    // projection factor t of P onto AB (0=at A, 1=at B)
+    const f32 t = clamp( (dot(AP, AB) / length2(AB)), 
+            0.0f, 1.0f
+    ); // clamp to [0,1] stay within segment
+  
+    // nearest point on AB
+    v2 nearest = { A.x + t * AB.x, A.y + t * AB.y };
+    // distance from P to nearest point
+    v2 diff = { P.x - nearest.x, P.y - nearest.y };
+
+    return sqrtf(length2(diff));
+}
+
+static void player_collision(game_state *g_, v2 dir)
+{
+    if(!g_->p._sect)
+        return ;
+
+    const v2 attempted_move = (v2){
+            g_->p.pos.x + dir.x,
+            g_->p.pos.y + dir.y
+    };
+    // player attempted move: oldpos -> newpos
+    for(uint32_t i = 0; i < g_->p._sect->n_walls; i ++)
+    {
+        const wall *w = g_->p._sect->walls[i];
+        if(!w->_op_sect // solid wall
+            || fabsf(g_->p._sect->floor - w->_op_sect->floor) > 4.0f) // or sections-steps too high
+        {
+            const f32 dist = p_dist_to_AB(*(w->a), *(w->b), attempted_move);
+            if(dist < PLAYER_RADIUS)
+            {
+                return ;
+                //// push player out, or slide along wall
+                const v2 v = (v2){
+                    w->b->x - w->a->x, 
+                    w->b->y - w->a->y
+                };
+                const f32 
+                    len = sqrtf(v.x * v.x + v.y * v.y);
+                const v2 wall_dir = (v2){ 
+                    v.x / len,
+                    v.y / len 
+                };
+                const f32 d = dot(attempted_move, wall_dir);
+                const v2 move = (v2){
+                    wall_dir.x * d,
+                    wall_dir.y * d
+                }; 
+                //  slide along wall
+                g_->p.pos = (v2){
+                    g_->p.pos.x + move.x,
+                    g_->p.pos.y + move.y
+                };
+                return ;
+            }        
+        }
+    }
+    g_->p.pos = (attempted_move);
+}
+
+static void player_sector_pos(game_state *g_)
+{
+    // each sect
+    for(uint32_t i = 0; i < g_->scene._sectors_count; i++)
+    {
+        sector *s = &g_->scene._sectors[i];
+        if (!s || !s->vertices[0]
+            || s->n_vertices <= 1
+            || s->n_vertices > 512
+            || s->floor > 6)
+        {
+            continue;
+        }
+        uint32_t crossingz = 0;
+        for(uint32_t j = 0; j < s->n_vertices; j++)
+        {
+            v2 
+                *a = s->vertices[j], 
+                *b = j == s->n_vertices - 1 ? s->vertices[0] : s->vertices[j + 1];
+            if(!a || !b)
+                continue;
+            if(
+                (a->y > g_->p.pos.y) != (b->y > g_->p.pos.y)
+                && (g_->p.pos.x < (b->x - a->x) * (g_->p.pos.y - a->y) / (b->y - a->y) + a->x ))
+            {
+               crossingz++; 
+            }
+        }
+        if(crossingz % 2 == 1)
+        {
+            g_->p._sect = (s);
+        }
+    }
+}
+
+
 static void player_movement(game_state *g_)
 {
     SDL_Event event;
@@ -67,9 +184,14 @@ static void player_movement(game_state *g_)
                 if(i == 18) s = -180.0f;
                 float d_x = cos(DEG2RAD((double)(g_->p.rotation  + s)));
                 float d_y = sin(DEG2RAD((double)(g_->p.rotation  + s))); 
-                g_->p.pos.y += 0.4f * d_y;
-                g_->p.pos.x += 0.4f * d_x;
-                
+                // g_->p.pos.y += 0.4f * d_y;
+                // g_->p.pos.x += 0.4f * d_x;
+                const v2 mov = (v2){
+                    0.4f * d_x,
+                    0.4f * d_y
+                };
+                player_collision(g_, mov);
+                player_sector_pos(g_);
             }
             // a
             if(i == 0)
@@ -91,40 +213,6 @@ static void player_movement(game_state *g_)
         g_->p.height = 4;
 }
 
-static void player_sector_pos(game_state *g_)
-{
-    // each sect
-    for(uint32_t i = 0; i < g_->scene._sectors_count; i++)
-    {
-        sector *s = &g_->scene._sectors[i];
-        if (!s || !s->vertices[0]
-            || s->n_vertices <= 1
-            || s->n_vertices > 512
-            || s->floor > 6)
-        {
-            continue;
-        }
-        uint32_t crossingz = 0;
-        for(uint32_t j = 0; j < s->n_vertices; j++)
-        {
-            v2 
-                *a = s->vertices[j], 
-                *b = j == s->n_vertices - 1 ? s->vertices[0] : s->vertices[j + 1];
-            if(!a || !b)
-                continue;
-            if(
-                (a->y > g_->p.pos.y) != (b->y > g_->p.pos.y)
-                && (g_->p.pos.x < (b->x - a->x) * (g_->p.pos.y - a->y) / (b->y - a->y) + a->x ))
-            {
-               crossingz++; 
-            }
-        }
-        if(crossingz % 2 == 1)
-        {
-            g_->p._sect = (s);
-        }
-    }
-}
 
 
 static inline void set_pixel_color(game_state *g_, int x, int y, int c)
@@ -1037,6 +1125,11 @@ static void parse_txt(game_state *g_, const char *f)
             printf("✅");
         printf("\033[0m\n");
     } 
+    // assign player sector
+    if(g_->scene._sectors_count > 2)
+    {
+        g_->p._sect = &g_->scene._sectors[1];
+    }
 }
 
 
@@ -1359,12 +1452,12 @@ static int init_doom(game_state **g_)
         return (-1);
     }
     (*g_)->quit = false;
-    (*g_)->p.pos.x = 10;
-    (*g_)->p.pos.y = 10;
+    (*g_)->p.pos.x = 15;
+    (*g_)->p.pos.y = 15;
     (*g_)->p.rotation = 0;
     (*g_)->p.height = 7.0f;
     (*g_)->p.y_pos = 0.0f;
-    (*g_)->render_mode = false;
+    (*g_)->render_mode = true;
     (*g_)->scene._walls_ix = 0;
     (*g_)->scene._walls = (wall *) malloc(512 * sizeof(wall));
     (*g_)->scene._verts = (v2 *)malloc(sizeof(v2));
@@ -1492,8 +1585,7 @@ int main(int argc, char **argv)
     // [game loop]
     while(!(g_->quit))
     {
-        player_movement(g_);
-        player_sector_pos(g_);
+        player_movement(g_); 
         update(g_);
     }
     destroy_doom(g_);
