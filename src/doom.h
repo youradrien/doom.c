@@ -34,13 +34,16 @@
 // horizontal fov
 #define HFOV DEG2RAD(FOV)
 // vertical fov
-#define VFOV 0.7f
+#define VFOV 0.65f
 
 #define ZNEAR 0.01f
 #define ZFAR  256.0f
 
 #define MAP_TILE 3
 #define MAP_ZOOM 5
+
+#define P_HEIGHT 7.0
+
 
 #define FPS 60
 #define FRAME_TARGET_TIME (1000/FPS)
@@ -68,7 +71,7 @@
 #define v2_to_v2i(_v) ({ __typeof__(_v) __v = (_v); (v2i) { __v.x, __v.y }; })
 #define v2i_to_v2(_v) ({ __typeof__(_v) __v = (_v); (v2) { __v.x, __v.y }; })
 
-#define PLAYER_RADIUS 2
+#define PLAYER_RADIUS 1.6
 
 typedef float f32;
 typedef int32_t  i32;
@@ -126,7 +129,6 @@ typedef	struct s_player
 { 
     v2	pos;
     f32	height;
-    f32 y_pos;
    
     // rotations
     f32	rotation;

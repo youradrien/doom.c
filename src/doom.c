@@ -48,9 +48,10 @@ static void player_collision(game_state *g_, v2 dir)
     if(!g_->p._sect)
         return ;
 
+    bool ahh = false;
     const v2 attempted_move = (v2){
-            g_->p.pos.x + dir.x,
-            g_->p.pos.y + dir.y
+            g_->p.pos.x + (3.0f * dir.x),
+            g_->p.pos.y + (3.0f * dir.y)
     };
     // player attempted move: oldpos -> newpos
     for(uint32_t i = 0; i < g_->p._sect->n_walls; i ++)
@@ -62,33 +63,38 @@ static void player_collision(game_state *g_, v2 dir)
             const f32 dist = p_dist_to_AB(*(w->a), *(w->b), attempted_move);
             if(dist < PLAYER_RADIUS)
             {
-                return ;
-                //// push player out, or slide along wall
+                if(w->_op_sect) // block-section step
+                    return ;
+
+                // wall vect
                 const v2 v = (v2){
                     w->b->x - w->a->x, 
                     w->b->y - w->a->y
                 };
                 const f32 
-                    len = sqrtf(v.x * v.x + v.y * v.y);
-                const v2 wall_dir = (v2){ 
-                    v.x / len,
-                    v.y / len 
-                };
-                const f32 d = dot(attempted_move, wall_dir);
-                const v2 move = (v2){
-                    wall_dir.x * d,
-                    wall_dir.y * d
-                }; 
-                //  slide along wall
-                g_->p.pos = (v2){
-                    g_->p.pos.x + move.x,
-                    g_->p.pos.y + move.y
-                };
-                return ;
+                        len = sqrtf(v.x * v.x + v.y * v.y);
+                const v2 
+                    wall_dir = (v2){ 
+                        v.x / len, v.y / len 
+                    },
+                    wall_normal = (v2){
+                        -wall_dir.y, wall_dir.x 
+                    };
+                // sliding: keep only mvmnt along wall_dir
+                f32 
+                    d = dot(dir, wall_dir) * 5.0f;
+                if(fabs(d) < .35f)
+                    d = d < 0.0f ? (-0.35f) : (0.35f);
+                
+                g_->p.pos.x += wall_dir.x * d;
+                g_->p.pos.y += wall_dir.y * d;
+
+                return; // stop after handling 1st collision    
             }        
         }
     }
-    g_->p.pos = (attempted_move);
+    if(!ahh)
+        g_->p.pos = (attempted_move);
 }
 
 static void player_sector_pos(game_state *g_)
@@ -100,10 +106,23 @@ static void player_sector_pos(game_state *g_)
         if (!s || !s->vertices[0]
             || s->n_vertices <= 1
             || s->n_vertices > 512
-            || s->floor > 6)
+            || (fabs)(g_->p._sect->floor - s->floor) > 3)
         {
             continue;
         }
+        // if sec isnt from traversal of player's sect
+        // skip it
+        bool b = false;
+        for(uint32_t a = 0; a < g_->p._sect->n_portals; a++)
+        {
+            //printf("%d, ", g_->p._sect->portals[a]->id );
+            if(g_->p._sect->portals[a]->id + 1 == s->id){
+                b = true;
+                break;
+            }
+        }
+        if(!b)
+            continue;
         uint32_t crossingz = 0;
         for(uint32_t j = 0; j < s->n_vertices; j++)
         {
@@ -122,6 +141,7 @@ static void player_sector_pos(game_state *g_)
         if(crossingz % 2 == 1)
         {
             g_->p._sect = (s);
+            g_->p.height = (s->floor + P_HEIGHT);
         }
     }
 }
@@ -187,8 +207,8 @@ static void player_movement(game_state *g_)
                 // g_->p.pos.y += 0.4f * d_y;
                 // g_->p.pos.x += 0.4f * d_x;
                 const v2 mov = (v2){
-                    0.4f * d_x,
-                    0.4f * d_y
+                    0.17f * d_x,
+                    0.17f * d_y
                 };
                 player_collision(g_, mov);
                 player_sector_pos(g_);
@@ -207,10 +227,12 @@ static void player_movement(game_state *g_)
     if(g_->p.pos.y >= (float)(WINDOW_HEIGHT - 6)) g_->p.pos.y = WINDOW_HEIGHT - 6.0f;
     if(g_->p.rotation > 360.0f) g_->p.rotation = 0.0f;
     if(g_->p.rotation < -360.0f) g_->p.rotation = 0.0f;
-    if(g_->p._crawl)
+    /*if(g_->p._crawl)
         g_->p.height = 0;
     if (g_->p._crouch)
         g_->p.height = 4;
+    */
+
 }
 
 
@@ -793,9 +815,9 @@ static void render_minimap(game_state *g_)
     // player fov lines 
     for(uint16_t i = 0; i < FOV; i ++)
     {
-        d_line(g_, (g_->p.pos.x + 3) * MAP_ZOOM, (g_->p.pos.y + 3) * MAP_ZOOM,  
-            MAP_ZOOM * (g_->p.pos.x + (200.0f * cos(DEG2RAD((float)((g_->p.rotation - (FOV / 2)) + i))))),
-            MAP_ZOOM * (g_->p.pos.y + (200.0f * sin(DEG2RAD((float)((g_->p.rotation - (FOV/2)) + i))))),
+        d_line(g_, (g_->p.pos.x) * MAP_ZOOM, (g_->p.pos.y) * MAP_ZOOM,  
+            MAP_ZOOM * (g_->p.pos.x + (100.0f * cos(DEG2RAD((float)((g_->p.rotation - (FOV / 2)) + i))))),
+            MAP_ZOOM * (g_->p.pos.y + (100.0f * sin(DEG2RAD((float)((g_->p.rotation - (FOV/2)) + i))))),
             i == FOV / 2 ? 0xFFFF00 : 0x333333
         );        
     }
@@ -820,7 +842,7 @@ static void render_minimap(game_state *g_)
                 }
                 else{
                     d_line(g_, (int)(a->x * MAP_ZOOM), (int)(a->y * MAP_ZOOM), (int)(b->x * MAP_ZOOM), (int)(b->y * MAP_ZOOM),
-                        ( l->_op_sect ) ? 0x0000FF : 0xFFFFFF);
+                        ( l->_op_sect ) ? 0x777777 : 0xFFFFFF);
                 }
             }
         }
@@ -1455,8 +1477,7 @@ static int init_doom(game_state **g_)
     (*g_)->p.pos.x = 15;
     (*g_)->p.pos.y = 15;
     (*g_)->p.rotation = 0;
-    (*g_)->p.height = 7.0f;
-    (*g_)->p.y_pos = 0.0f;
+    (*g_)->p.height = P_HEIGHT;
     (*g_)->render_mode = true;
     (*g_)->scene._walls_ix = 0;
     (*g_)->scene._walls = (wall *) malloc(512 * sizeof(wall));
