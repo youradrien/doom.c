@@ -45,5 +45,9 @@ designed for non-Euclidean level layouts, efficient traversal, and classic softw
 ### Steps
 
 ```bash
+brew install sdl2 sdl2_image
+or
+sudo apt install sdl2 sdl2_image
 git clone https://github.com/youradrien/doom.c.git doom-nukem
 cd doom-nukem
+make re && ./doom assets/maps/bruh.txt

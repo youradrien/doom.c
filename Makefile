@@ -11,8 +11,8 @@ CFLAGS += -fsanitize=address -g
 CFLAGS += -Dallocator_may_return_null=1
 INCLUDES = -I./src/*.h
 LDFLAGS = $(shell sdl2-config --libs)
+LDFLAGS += -lSDL2_image
 CFLAGS += $(shell sdl2-config --cflags)
-CFALGS += -fsanitize=address
 OS = $(shell uname -s)
 
 EXEC = doom

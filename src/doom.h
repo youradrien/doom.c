@@ -2,9 +2,11 @@
 
 # define DOOM_H
 
+#include <stdint.h>
 #include <stdio.h>
 #include <stdbool.h>
 #include <SDL.h>
+#include <SDL_image.h>
 #include <ctype.h>
 #include <inttypes.h>
 #include <math.h>
@@ -34,12 +36,12 @@
 // horizontal fov
 #define HFOV DEG2RAD(FOV)
 // vertical fov
-#define VFOV 0.65f
+#define VFOV 0.75f
 
 #define ZNEAR 0.01f
 #define ZFAR  256.0f
 
-#define MAP_TILE 3
+#define MAP_TILE 4
 #define MAP_ZOOM 5
 
 #define P_HEIGHT 7.0
@@ -104,6 +106,29 @@ typedef struct s_sector
 
     int16_t	id;
 }   sector;
+
+
+// entity [box | enemies | projectiles]
+typedef enum entity_type {
+    ENTITY_NONE = 0,      // placeholder / uninitialized
+    ENTITY_ENEMY,         // 1. basic enemy
+    ENTITY_PROJECTILE,    // 2. bullets, rockets, etc.
+    ENTITY_ITEM,          // 3. health, ammo, key, etc.
+    ENTITY_BOX,           // 4. physics boxes / pushables
+} entity_type;
+typedef struct s_entity
+{
+    v2 pos;
+    v2 dir;
+    sector *_sect;
+    
+    uint16_t health;
+    entity_type type;
+    
+    f32	collision_radius;
+    SDL_Surface *img;
+
+}   entity;
 
 //  [walls | linedefs]
 typedef struct s_wall
@@ -176,6 +201,11 @@ typedef struct s_scene
     // uncovered vertical-arrays
     int y_lo[WINDOW_WIDTH];
     int y_hi[WINDOW_WIDTH];
+
+    // textures
+    SDL_Surface *t_floors[7];
+    SDL_Surface *t_portals[2];
+    SDL_Surface *t_walls[6];
 
     // rendering queue 
     queue_entry _queue[MAX_QUEUE];

@@ -43,6 +43,62 @@ static f32 p_dist_to_AB(v2 A, v2 B, v2 P)
     return sqrtf(length2(diff));
 }
 
+// load img's from path ../assets/*.png
+static SDL_Surface *load_surface(const char *path)
+{
+    SDL_Surface *surf = IMG_Load(path);
+    if (!surf) {
+        printf("WARNING, couldn't load %s: %s\n", path, IMG_GetError());
+        return NULL;
+    }
+    // convert to 32-bit RGBA 
+    SDL_Surface *converted = SDL_ConvertSurfaceFormat(surf, SDL_PIXELFORMAT_RGBA32, 0);
+    SDL_FreeSurface(surf);
+
+    // access pixels
+    /* 
+    uint32_t *pixels = (Uint32 *)converted->pixels;
+    int pitch = converted->pitch / 4; // pixels per row
+    uint32_t pixel = pixels[y * pitch + x]; 
+    */
+
+    return converted;
+}
+
+static inline uint32_t get_pixel(SDL_Surface *surface, int x, int y)
+{
+    if (!surface || !surface->pixels
+            || x < 0 || y < 0)
+    {
+        if(!surface)
+            printf("ew \n");
+        if(!surface->pixels)
+            printf("cum \n");
+        if(x < 0 || y < 0)
+            printf("e \n");
+        return 0;
+    }
+    const int bpp = surface->format->BytesPerPixel;
+    uint8_t *p = (uint8_t *) surface->pixels + y * surface->pitch + x * bpp;
+
+    switch(bpp) 
+    {
+        case 1: 
+            return *p;
+        case 2:
+            return *(uint16_t*)p;
+        case 3:
+            if (SDL_BYTEORDER == SDL_BIG_ENDIAN)
+                return p[0] << 16 | p[1] << 8 | p[2];
+            else
+                return p[0] | p[1] << 8 | p[2] << 16;
+        case 4: 
+            return *(uint32_t *) (p);
+    }
+    return 0;
+}
+
+
 static void player_collision(game_state *g_, v2 dir)
 {
     if(!g_->p._sect)
@@ -76,10 +132,7 @@ static void player_collision(game_state *g_, v2 dir)
                 const v2 
                     wall_dir = (v2){ 
                         v.x / len, v.y / len 
-                    },
-                    wall_normal = (v2){
-                        -wall_dir.y, wall_dir.x 
-                    };
+                    };                
                 // sliding: keep only mvmnt along wall_dir
                 f32 
                     d = dot(dir, wall_dir) * 5.0f;
@@ -344,6 +397,18 @@ static inline v2 intersect_segments(v2 a0, v2 a1, v2 b0, v2 b1) {
 
 
 
+// HFOV = horizontal field of view in radians
+static inline f32 screen_x_to_angle(game_state *g_, int x)
+{
+    const f32 
+        // x ∈ [0, WINDOW_WIDTH-1]
+        half_width = WINDOW_WIDTH / 2.0f,
+        // angle offset from forward (0 = center of screen)
+        offset = (x - half_width) / half_width * (HFOV / 2.0f);
+
+    // actual world angle = player facing + offset
+    return (g_->p.rotation + offset);
+}
 
 // convert angle to [-(FOV/2)...+(FOV/2)] => [x in 0..WINDOW_WIDTH] 
 /*static inline int screen_angle_to_x(f32 angle) {
@@ -649,21 +714,23 @@ static void render_doomnukem(game_state *g_)
                 // floor
                 //
                 //
-                for(int y = bot; y < WINDOW_HEIGHT; y++)
+                for(int y = c_bot; y < g_->scene.y_hi[x]; y++)
                 {
-                    /* float dy = y - (WINDOW_HEIGHT / 2);
-                    float row_dist = g_->p.height / dy;
+                    f32
+                        row_dist = g_->p.height / (y - (WINDOW_HEIGHT / 2)),
+                        angle = screen_x_to_angle(g_, x),
+                        dx = cosf(angle), 
+                        dy = sinf(angle);
 
-                    // ray direction for this x
-                    float angle = angle_for_screen_x(g_, x);
-                    float dx = cosf(angle), dy = sinf(angle);
-
-                    float world_x = g_->p.x + row_dist * dx;
-                    float world_y = g_->p.y + row_dist * dy; */
+                    const int
+                        world_x = (int)(g_->p.pos.x + row_dist * dx),
+                        world_y = (int)(g_->p.pos.y + row_dist * dy);
 
                     // floor shade or texture
-                    uint32_t floor_color = 0x0000FF; // or sample_floor(world_x, world_y);
-                    // set_pixel_color(g_, x, y, floor_color);
+                    uint32_t floor_color = (world_x >= 0 && world_y >= 0) ? 
+                        (get_pixel(g_->scene.t_floors[1], world_x, world_y)) : (0x0000FF); 
+                    // or sample_floor(world_x, world_y);
+                    set_pixel_color(g_, x, y, floor_color);
                 }
                 // ceiling
                 //
@@ -719,7 +786,7 @@ static void render_doomnukem(game_state *g_)
                             portl_top,
                             abgr_mul(0xFFD0D0D0, shade)
                         );
-                        set_pixel_color(g_, (x), c_portl_top, 0xAAAAAA);
+                        set_pixel_color(g_, (x), c_portl_top, 0xCCCCCC);
                     }
                     // bottom wall
                     if(l->_op_sect->floor > curr_sect->floor)
@@ -730,7 +797,7 @@ static void render_doomnukem(game_state *g_)
                             c_bot,
                             abgr_mul(0x777777, shade)
                         );
-                        set_pixel_color(g_, (x), c_portl_bot, 0xAAAAAA);
+                        set_pixel_color(g_, (x), c_portl_bot, 0xCCCCCC);
                     }
 
                     g_->scene.y_lo[x] =
@@ -892,8 +959,6 @@ static void printBSP(BSP_node *node, int depth)
     printBSP(node->_front, depth + 1);
     printBSP(node->_back, depth + 1);
 }
-
-
 
 
 // txt to data
@@ -1392,6 +1457,10 @@ static void destroy_doom(game_state *g_)
     SDL_DestroyWindow(g_->window);
     SDL_Quit();
  
+    // free textures
+    for(int i = 0; i < 7; i++)
+        if(g_->scene.t_floors[i])
+            SDL_FreeSurface(g_->scene.t_floors[i]);
     // scene memory
     free(g_->scene._verts);
     free(g_->scene._walls);
@@ -1416,6 +1485,11 @@ static int init_doom(game_state **g_)
     if (SDL_Init(SDL_INIT_EVERYTHING) != 0)
     {
         fprintf(stderr, "Error initializing SDL. \n");
+        return -1;
+    }
+    if (!(IMG_Init(IMG_INIT_PNG) & IMG_INIT_PNG))
+    {
+        printf("SDL_image init failed: %s\n", IMG_GetError());
         return -1;
     }
     (*g_)->window = SDL_CreateWindow(
@@ -1473,9 +1547,43 @@ static int init_doom(game_state **g_)
         fprintf(stderr, "Error creating texture. \n");
         return (-1);
     }
+    // load walls, floors, portals textures
+    const char *assets[3] = {
+        "./assets/textures/floor", "./assets/textures/wall", 
+        "./assets/textures/portal"
+    };
+    SDL_Surface** assets_ptr[3] = {
+        ((*g_)->scene.t_floors), ((*g_)->scene.t_walls),
+        ((*g_)->scene.t_portals)
+    };
+    for(int a = 0; a < 3; a ++)
+    {
+        int b = 0, d = 0;
+        SDL_Surface *s = NULL;
+        do
+        {
+            char c = ('0' + (b + 1));
+            char end[64];
+            snprintf(
+                end, sizeof(end), "_0%c.png", c
+            );
+            char path[128];
+            snprintf(
+                path, sizeof(path), "%s%s", assets[a], end
+            );
+            // printf("loading: %s... \n", path);
+            s = load_surface(path);
+            if(s){
+                printf("loaded: %s [%d x %d]\n", path, s->w, s->h);
+                assets_ptr[a][b] = (s);
+            }
+            b++;
+            d++;
+        } while(s != NULL && d < 100);
+    }
     (*g_)->quit = false;
-    (*g_)->p.pos.x = 15;
-    (*g_)->p.pos.y = 15;
+    (*g_)->p.pos.x = 20;
+    (*g_)->p.pos.y = 20;
     (*g_)->p.rotation = 0;
     (*g_)->p.height = P_HEIGHT;
     (*g_)->render_mode = true;
@@ -1597,7 +1705,7 @@ int main(int argc, char **argv)
     }
 
     // parse map
-    parse_txt(g_, "maps/bruh.txt"); 
+    parse_txt(g_, "assets/maps/bruh.txt"); 
     init_bsp(g_);
 
     printf("\033[32mDOOM RUNNING [%dx%d] \033[0m \n", WINDOW_WIDTH, WINDOW_HEIGHT);
